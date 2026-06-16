@@ -1,0 +1,57 @@
+# 存档（用户数据）
+saves/
+
+# 上传文件
+uploads/
+
+# 语音缓存
+voice-data/
+
+# 工具（GARbro 等第三方工具）
+tools/
+
+# WebGAL 引擎（不是本项目的一部分）
+WebGAL-4.6.0/
+WebGAL-4.6.0-web/
+WebGAL-4.6.0.zip
+WebGAL-4.6.0-web.zip
+
+# TTS 启动相关 - 只保留脚本，忽略引擎
+# GPT-SoVITS 引擎太大 (15GB+)，不纳入版本控制
+
+# Node.js
+node_modules/
+
+# 日志
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Claude Code 内部文件
+# .claude/（已纳入版本控制，用于分发茉子专属配置）
+
+# 构建产物
+dist/
+node_modules/
+
+# 临时文件
+*.log
+.update-status.json
+
+# 敏感配置（含 API Key，绝对不能提交）
+mako-settings.json
+
+# IDE / 编辑器
+.vscode/
+.idea/
+
+# Windows 缩略图缓存
+*.db
+*.db-shm
+*.db-wal
+
+# 旧许可证（已替换为 MIT LICENSE）
+LICENSE.txt

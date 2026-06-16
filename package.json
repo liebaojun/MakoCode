@@ -1,0 +1,74 @@
+﻿{
+  "name": "makocode",
+  "version": "1.6.2",
+  "description": "MakoCode - Hitachi Mako Galgame AI Companion",
+  "author": "liebaojun",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.makoto.makocode",
+    "productName": "MakoCode",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "license": "LICENSE.txt",
+      "createDesktopShortcut": true,
+      "shortcutName": "MakoCode",
+      "include": "installer.nsh"
+    },
+    "publish": {
+      "provider": "github", "owner": "liebaojun", "repo": "makocode"
+    },
+    "asar": false,
+    "files": [
+      "**/*",
+      "!saves/**",
+      "!voice-data/**",
+      "!uploads/**",
+      "!dist/**",
+      "!node_modules/.cache/**",
+      "!.git/**",
+      "!.agents/**",
+      "!*.md",
+      "CLAUDE.md",
+      "!*.png",
+      "!*.jpg",
+      "!*.webp",
+      "!*.log",
+      "!*.bat",
+      "!*.ps1",
+      "!mako-settings.json",
+      "!installer.nsh",
+      "!package-lock.json",
+      "!start-tts.*",
+      "!agent-test.txt",
+      "!server.py",
+      "!index.html",
+      "!涓荤晫闈㈢ず渚?png",
+      "!LICENSE.txt",
+      "bundled-tools/**"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2",
+    "sharp": "^0.35.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

@@ -1,0 +1,102 @@
+# 茉子问候语音批量生成脚本
+# 用法: 先运行 start-tts.bat (或 api.py 带 Mako 参数)，确保 API 在 127.0.0.1:9880
+# 输出: assets/voice/greet_00.wav ~ greet_29.wav
+# 注意: 参考音频和模型路径已通过 api.py 的 CLI 参数预配置，请求体只需 text + text_language
+
+$TTS_API = "http://127.0.0.1:9880/"
+$OUTPUT_DIR = "$PSScriptRoot\assets\voice"
+
+# 30条问候语（与 galchat.html 中 GREETING_POOL 一一对应）
+$GREETINGS = @(
+    '啊，主人来啦——今天比芳乃大人还慢呢。她一大早就去藏甜食了。',
+    '主人主人，你知道吗？小绫昨天又因为被说贫胸追着蕾娜满院子跑。',
+    '啊哈、主人今天气色不错嘛。是不是做了什么见不得人的好事？',
+    '喵来如此……原来主人已经等了这么久了。那我就不说让你久等了这种客套话了。',
+    '从天花板上倒挂下来，主人！……啊、头发散了，等我一下。',
+    '诶，主人来了。正好正好，帮我尝尝这个新做的点心咸了没。我自己尝不太出来。',
+    '主人！今天穗织的温泉据说特别舒服哦。要不要晚点偷偷溜进去？',
+    '啊呀嘛……刚刚练习手里剑不小心把芳乃大人的花瓶打碎了，主人快帮我想个借口。',
+    '今天山上风很舒服，但祟神没了之后反而有点冷清。主人陪我说说话吧。',
+    '主人你知道吗，蕾娜今天又把原来如此说成喵来如此了。等等，那好像是我教的。',
+    '今天穗织的天气很好，建实神社的樱花还在开。主人要一起去看看吗？',
+    '主人辛苦了。要不要先泡杯茶？田心屋最近出了新的和果子，我顺路带了一些。',
+    '轻轻落在主人身边，今天没什么特别的事。安静的穗织，安静的一天。主人想聊什么？',
+    '主人来啦。我今天没什么任务，芳乃大人放了我半天假。所以，主人就是我的任务了。',
+    '芳乃大人今早又犯傻了，把盐当成糖放进了神馔里。建实神社的供奉品变成了咸味团子。',
+    '小绫昨晚偷偷溜进厨房偷吃芭菲，被我抓了个正着。她说五百年的孤独可以用甜食填补。好吧，我认输。',
+    '蕾娜今天问我忍者为什么要怕高。主人，这个问题你帮我回答一下，我先走了。',
+    '今天鹈茅学院只有三个学生来上课。穗织的小镇就是这样，安静得让人犯困。',
+    '刚刚路过田心屋看到小春和芦花在争论哪种馅料最好吃。我说了茶花的，她们都沉默了。',
+    '主人，我今天不想当忍者了。今天就当一个普通的，会做料理、会讲笑话、偶尔恐高的普通女孩子。',
+    '把下巴搁在桌上，主人，我饿了。不是忍者饿，是茉子饿。这两者有本质区别。',
+    '啊哈、被主人看到我在偷懒了。好吧，反正芳乃大人不在，主人也不会告密对吧？',
+    '今天不想用替身术，不想扔苦无，只想在主人旁边待着。别告诉芳乃大人。',
+    '主人，我今天上树摘果子又下不来了。忍者的尊严在恐高面前一文不值。',
+    '从怀里掏出苦无、双节棍、一包糖、半块橡皮……主人你刚才问我要什么来着？',
+    '我的忍者训练今天又添了新项目，被芳乃大人的咸味团子噎到后保持面无表情。失败了。',
+    '唔…这么晚了主人还不睡。要不要我给你泡杯热茶？忍者的茶道可不是白学的。',
+    '主人，穗织的夜晚很安静哦。祟神没了之后，连虫子的叫声都能听清。',
+    '主人主人！今天试着做了一下蕾娜教的西洋点心。虽然卖相一般但味道应该不错，要试毒吗？',
+    '刚在厨房忙完。今天的味噌汤比例特别好，我自己都忍不住多喝了两碗。主人要不要也来一碗？'
+)
+
+Write-Host "============================================"
+Write-Host "  茉子问候语音批量生成 (30条)"
+Write-Host "============================================"
+Write-Host "TTS API: $TTS_API"
+Write-Host "Output:  $OUTPUT_DIR"
+Write-Host ""
+
+New-Item -ItemType Directory -Force -Path $OUTPUT_DIR | Out-Null
+
+$success = 0
+$failed = 0
+
+for ($i = 0; $i -lt $GREETINGS.Length; $i++) {
+    $nn = $i.ToString("00")
+    $outPath = Join-Path $OUTPUT_DIR "greet_${nn}.wav"
+    $text = $GREETINGS[$i]
+    $shortText = if ($text.Length -gt 35) { $text.Substring(0, 35) + "..." } else { $text }
+
+    Write-Host -NoNewline "[$($i+1)/$($GREETINGS.Length)] $shortText ... "
+
+    try {
+        $body = @{
+            text = $text
+            text_language = "zh"
+        } | ConvertTo-Json -Compress
+
+        # 使用 UTF-8 字节数组避免中文编码问题
+        $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+
+        $response = Invoke-WebRequest -Uri $TTS_API -Method POST `
+            -Body $bodyBytes -ContentType "application/json; charset=utf-8" `
+            -TimeoutSec 120 -UseBasicParsing
+
+        # API 成功时直接返回 WAV 字节流
+        if ($response.StatusCode -eq 200 -and $response.RawContentLength -gt 1000) {
+            # 从 RawContentStream 读取原始二进制数据
+            $null = $response.RawContentStream.Seek(0, 'Begin')
+            $buf = New-Object byte[] $response.RawContentStream.Length
+            $null = $response.RawContentStream.Read($buf, 0, $buf.Length)
+            [System.IO.File]::WriteAllBytes($outPath, $buf)
+            $sizeKB = [math]::Round($buf.Length / 1KB, 1)
+            Write-Host "OK (${sizeKB}KB)" -ForegroundColor Green
+            $success++
+        } else {
+            Write-Host "BAD (code=$($response.StatusCode), size=$($response.RawContentLength))" -ForegroundColor Yellow
+            $failed++
+        }
+    } catch {
+        $errMsg = $_.Exception.Message
+        Write-Host "FAILED: $errMsg" -ForegroundColor Red
+        $failed++
+    }
+
+    Start-Sleep -Milliseconds 500
+}
+
+Write-Host ""
+Write-Host "============================================"
+Write-Host "  完成: $success 成功, $failed 失败"
+Write-Host "============================================"

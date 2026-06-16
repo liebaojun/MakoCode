@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>茉子·初次见面</title>
+<style>
+  :root {
+    --bg: #1a1428;
+    --panel-bg: rgba(30, 20, 50, 0.95);
+    --border: rgba(180, 140, 220, 0.3);
+    --text: #e8d5f5;
+    --accent: #c49be0;
+    --accent-glow: #a855f7;
+    --input-bg: rgba(15, 10, 25, 0.8);
+    --success: #6ee7b7;
+    --warning: #fbbf24;
+    --error: #f87171;
+    --mako-pink: #e8a0bf;
+    --mako-hair: #ba89c9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+
+  /* 背景粒子 */
+  .particles {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .particle {
+    position: absolute;
+    background: var(--accent);
+    border-radius: 50%;
+    opacity: 0;
+    animation: floatUp 8s infinite;
+  }
+  @keyframes floatUp {
+    0% { transform: translateY(100vh) scale(0); opacity: 0; }
+    10% { opacity: 0.6; }
+    90% { opacity: 0.1; }
+    100% { transform: translateY(-10vh) scale(1.5); opacity: 0; }
+  }
+
+  /* 主容器 */
+  .wizard-container {
+    position: relative;
+    z-index: 1;
+    width: 680px;
+    max-height: 90vh;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 0 60px rgba(168, 85, 247, 0.15), 0 0 120px rgba(168, 85, 247, 0.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* 顶部装饰栏 */
+  .wizard-header {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(232, 160, 191, 0.15));
+    border-bottom: 1px solid var(--border);
+    padding: 20px 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .wizard-header .icon {
+    font-size: 28px;
+  }
+  .wizard-header .title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  /* 步骤指示器 */
+  .steps-indicator {
+    display: flex;
+    gap: 0;
+    padding: 16px 28px;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .step-dot {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    position: relative;
+  }
+  .step-dot::after {
+    content: '';
+    flex: 1;
+    height: 2px;
+    background: rgba(255,255,255,0.1);
+    margin-left: 8px;
+  }
+  .step-dot:last-child::after { display: none; }
+  .step-dot .num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .step-dot.active .num {
+    border-color: var(--accent-glow);
+    background: rgba(168,85,247,0.3);
+    color: var(--accent);
+    box-shadow: 0 0 10px rgba(168,85,247,0.4);
+  }
+  .step-dot.done .num {
+    border-color: var(--success);
+    background: rgba(110,231,183,0.2);
+    color: var(--success);
+  }
+  .step-dot.active { color: var(--accent); }
+  .step-dot.done { color: var(--success); }
+
+  /* 主内容区 */
+  .wizard-body {
+    flex: 1;
+    padding: 28px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* 茉子对话气泡 */
+  .mako-bubble {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .mako-avatar {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--mako-hair), var(--mako-pink));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 0 12px rgba(186,137,201,0.3);
+  }
+  .mako-msg {
+    background: rgba(168,85,247,0.1);
+    border: 1px solid rgba(168,85,247,0.2);
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 14px;
+    line-height: 1.7;
+    max-width: 520px;
+  }
+
+  /* 状态卡片 */
+  .status-card {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .status-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .status-icon.checking { background: rgba(251,191,36,0.2); }
+  .status-icon.ok { background: rgba(110,231,183,0.2); }
+  .status-icon.missing { background: rgba(248,113,113,0.2); }
+  .status-text { flex: 1; font-size: 13px; }
+  .status-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .badge-ok { background: rgba(110,231,183,0.2); color: var(--success); }
+  .badge-missing { background: rgba(248,113,113,0.2); color: var(--error); }
+  .badge-checking { background: rgba(251,191,36,0.2); color: var(--warning); }
+
+  /* 输入框 */
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .input-group label {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .input-group input {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: "Consolas", "Microsoft YaHei", monospace;
+    outline: none;
+    transition: border-color 0.3s;
+  }
+  .input-group input:focus {
+    border-color: var(--accent-glow);
+    box-shadow: 0 0 8px rgba(168,85,247,0.2);
+  }
+
+  /* 按钮 */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .btn {
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: 600;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent-glow), #7c3aed);
+    color: white;
+    box-shadow: 0 2px 10px rgba(168,85,247,0.3);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 4px 20px rgba(168,85,247,0.5);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn-secondary {
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover {
+    background: rgba(255,255,255,0.1);
+  }
+
+  /* 加载动画 */
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 终端输出框 */
+  .terminal-box {
+    background: #0a0a0f;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+    color: #a0ffa0;
+    max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    display: none;
+  }
+
+  /* 成功动画 */
+  .success-anim {
+    text-align: center;
+    padding: 20px;
+    animation: popIn 0.5s ease-out;
+  }
+  @keyframes popIn {
+    0% { transform: scale(0.5); opacity: 0; }
+    80% { transform: scale(1.05); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .success-anim .check {
+    font-size: 56px;
+    display: block;
+    margin-bottom: 12px;
+  }
+  .success-anim .msg {
+    font-size: 16px;
+    color: var(--success);
+  }
+  /* 预设按钮 */
+  .btn-preset-wiz {
+    background: rgba(197,163,224,0.15); border: 1px solid rgba(197,163,224,0.3);
+    color: #c5a3e0; font-size: 11px; padding: 2px 10px; border-radius: 5px;
+    cursor: pointer; margin-left: 8px; vertical-align: middle;
+    transition: all 0.2s;
+  }
+  .btn-preset-wiz:hover { background: rgba(197,163,224,0.3); }
+  /* 预设弹出面板 */
+  #preset-overlay-wiz { display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    align-items: center; justify-content: center; }
+  .preset-panel-wiz { background: #1a1428; border: 1px solid #403860;
+    border-radius: 16px; padding: 24px; max-width: 680px; width: 90vw;
+    max-height: 80vh; overflow-y: auto; }
+  .preset-card-wiz {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 12px; cursor: pointer; transition: all 0.2s;
+  }
+  .preset-card-wiz:hover { background: rgba(197,163,224,0.15); border-color: rgba(197,163,224,0.4); }
+  .preset-card-wiz.active-preset { border-color: rgba(197,163,224,0.6); background: rgba(197,163,224,0.15); }
+  .preset-card-wiz .preset-name { font-size: 14px; font-weight: bold; color: #e8e0f0; margin-bottom: 2px; }
+  .preset-card-wiz .preset-model { font-size: 11px; color: #999; font-family: monospace; }
+  .preset-card-wiz .preset-note { font-size: 10px; color: #777; margin-top: 4px; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<!-- 背景粒子 -->
+<div class="particles" id="particles"></div>
+
+<!-- 向导容器 -->
+<div class="wizard-container">
+  <div class="wizard-header">
+    <span class="icon">🌸</span>
+    <span class="title">茉子 · 初次见面</span>
+  </div>
+
+  <!-- 步骤指示器 -->
+  <div class="steps-indicator" id="stepsBar">
+    <div class="step-dot active" data-step="0"><span class="num">1</span>选择组件</div>
+    <div class="step-dot" data-step="1"><span class="num">2</span>安装工具</div>
+    <div class="step-dot" data-step="2"><span class="num">3</span>API 配置</div>
+    <div class="step-dot" data-step="3"><span class="num">4</span>测试连接</div>
+  </div>
+
+  <!-- 内容区 -->
+  <div class="wizard-body" id="wizardBody"></div>
+</div>
+
+<!-- LLM 供应商预设弹窗 -->
+<div id="preset-overlay-wiz" onclick="if(event.target===this)closePresetModalWiz()">
+  <div class="preset-panel-wiz" onclick="event.stopPropagation()">
+    <h2 style="color:#c5a3e0;margin:0 0 4px 0;font-size:18px;">📋 LLM 供应商预设</h2>
+    <p style="color:#888;font-size:13px;margin:0 0 16px 0;">选择供应商将自动填充 API 地址和模型名称，API Key 需自行填写。</p>
+    <div id="preset-list-wiz" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;"></div>
+    <div style="margin-top:16px;text-align:right;">
+      <button onclick="closePresetModalWiz()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:8px 24px;border-radius:8px;cursor:pointer;">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== 后端检测 ====================
+// 如果从 file:// 加载，说明后端未启动（Node.js 不可用等）
+const IS_FILE_PROTOCOL = window.location.protocol === 'file:';
+const BACKEND_BASE = IS_FILE_PROTOCOL ? 'http://127.0.0.1:8080' : '';
+// 当从 file:// 加载时，所有 API 调用需要拼接完整 URL
+function apiUrl(path) {
+  return IS_FILE_PROTOCOL ? (BACKEND_BASE + path) : path;
+}
+
+let backendAvailable = !IS_FILE_PROTOCOL; // HTTP 模式 = 后端已启动
+
+// ==================== 向导状态 ====================
+const STATE = {
+  step: 0,
+  needInstall: { node: true, git: true, claude: true },
+  apiEndpoint: 'https://api.deepseek.com/anthropic',
+  apiKey: '',
+  apiModel: 'deepseek-v4-flash',
+};
+
+// ==================== 工具函数 ====================
+function $(id) { return document.getElementById(id); }
+
+
+// ==================== 渲染函数 ====================
+
+function renderStep0() {
+  return `
+    <div class="mako-bubble">
+      <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+      <div class="mako-msg">
+        主人好～我是茉子！在开始之前，先确认一下需要安装的工具。<br><br>
+        茉子已经帮主人勾好了，如果电脑里<strong>已经有</strong>哪一项，取消勾选就好啦～
+      </div>
+    </div>
+    <label class="status-card" style="cursor:pointer;align-items:flex-start;">
+      <input type="checkbox" id="chkNode" checked style="width:18px;height:18px;accent-color:var(--accent-glow);flex-shrink:0;margin-top:2px;">
+      <div class="status-text">
+        <strong>Node.js</strong> — JavaScript 运行时<br>
+        <small style="color:#999">Claude Code 需要它才能运行。安装包约 30MB</small>
+      </div>
+    </label>
+    <label class="status-card" style="cursor:pointer;align-items:flex-start;">
+      <input type="checkbox" id="chkGit" checked style="width:18px;height:18px;accent-color:var(--accent-glow);flex-shrink:0;margin-top:2px;">
+      <div class="status-text">
+        <strong>Git</strong> — 版本控制工具<br>
+        <small style="color:#999">Claude Code 的某些功能需要它。安装包约 50MB</small>
+      </div>
+    </label>
+    <label class="status-card" style="cursor:pointer;align-items:flex-start;">
+      <input type="checkbox" id="chkClaude" checked style="width:18px;height:18px;accent-color:var(--accent-glow);flex-shrink:0;margin-top:2px;">
+      <div class="status-text">
+        <strong>Claude Code CLI</strong> — AI 对话引擎<br>
+        <small style="color:#999">茉子的"大脑"，通过 npm 自动安装，约 200MB</small>
+      </div>
+    </label>
+    <p style="font-size:11px;color:#888;text-align:center;margin:0;">
+      💡 如果电脑中已有某项工具，请取消勾选。首次安装建议全选。
+    </p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="goStep(1)">确认选择，继续 →</button>
+    </div>
+  `;
+}
+
+function renderStep1() {
+  // 读取第一步的勾选状态
+  const needNode = ($('chkNode')?.checked) ? true : false;
+  const needGit = ($('chkGit')?.checked) ? true : false;
+  const needClaude = ($('chkClaude')?.checked) ? true : false;
+  STATE.needInstall = { node: needNode, git: needGit, claude: needClaude };
+
+  if (!needNode && !needGit && !needClaude) {
+    return `
+      <div class="mako-bubble">
+        <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+        <div class="mako-msg">
+          什么都没勾选呢～看来主人电脑里该有的都有！<br>
+          那我们直接进入下一步吧。
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goStep(0)">← 返回勾选</button>
+        <button class="btn btn-primary" onclick="goStep(2)">配置 API →</button>
+      </div>
+    `;
+  }
+
+  const autoTools = [];
+  if (needNode) autoTools.push('node');
+  if (needGit) autoTools.push('git');
+  if (needClaude) autoTools.push('claude');
+
+  let html = `
+    <div class="mako-bubble">
+      <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+      <div class="mako-msg">
+        茉子来帮主人安装这些工具～<br><br>`;
+
+  if (autoTools.length > 0) {
+    const autoNames = [];
+    if (needNode) autoNames.push('Node.js');
+    if (needGit) autoNames.push('Git');
+    if (needClaude) autoNames.push('Claude Code (~200MB)');
+    html += `<span style="color:var(--success)">📦 ${autoNames.join('、')}</span> — 点一下按钮，茉子全自动装好<br>`;
+  } else {
+    html += `什么都没勾选呢～看来主人电脑里该有的都有！`;
+  }
+
+  html += `</div></div>`;
+
+  // 自动安装的状态卡片
+  if (autoTools.length > 0) {
+    html += `<div id="installStatusArea">`;
+    if (needNode) {
+      html += `
+        <div class="status-card" id="status-node">
+          <div class="status-icon checking">⏳</div>
+          <div class="status-text"><strong>Node.js</strong> — JavaScript 运行时</div>
+          <span class="status-badge badge-checking" id="badge-node">等待安装</span>
+        </div>`;
+    }
+    if (needGit) {
+      html += `
+        <div class="status-card" id="status-git">
+          <div class="status-icon checking">⏳</div>
+          <div class="status-text"><strong>Git</strong> — 版本控制工具</div>
+          <span class="status-badge badge-checking" id="badge-git">等待安装</span>
+        </div>`;
+    }
+    if (needClaude) {
+      html += `
+        <div class="status-card" id="status-claude">
+          <div class="status-icon checking">⏳</div>
+          <div class="status-text">
+            <strong>Claude Code CLI</strong> — AI 对话引擎<br>
+            <small style="color:#999">通过 npm 安装，约 200MB</small>
+          </div>
+          <span class="status-badge badge-checking" id="badge-claude">等待安装</span>
+        </div>`;
+    }
+    html += `<div id="installLog" class="terminal-box" style="display:none;margin-top:8px;"></div>`;
+    html += `</div>`;
+  }
+
+  // 按钮区
+  const hasAuto = autoTools.length > 0;
+  html += `
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn btn-secondary" onclick="goStep(0)">← 返回勾选</button>
+      ${hasAuto ? `<button class="btn btn-primary" id="btnInstall" onclick="startAutoInstall()">🚀 开始安装</button>` : ''}
+      ${!hasAuto ? `<button class="btn btn-primary" onclick="goStep(2)">配置 API →</button>` : ''}
+    </div>`;
+
+  return html;
+}
+
+// ==================== 后台安装逻辑 ====================
+
+let installRunning = false;
+
+async function startAutoInstall() {
+  if (installRunning) return;
+  installRunning = true;
+  const btn = $('btnInstall');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 安装中...'; }
+
+  const tools = [];
+  if (STATE.needInstall.node) tools.push('node');
+  if (STATE.needInstall.git) tools.push('git');
+  if (STATE.needInstall.claude) tools.push('claude');
+
+  const logBox = $('installLog');
+  if (logBox) { logBox.style.display = 'block'; logBox.textContent = ''; }
+  function logInstall(msg) {
+    if (logBox) logBox.textContent += msg + '\r\n';
+  }
+
+  // 标记所有为安装中
+  for (const tool of tools) {
+    updateInstallUI(tool, 'installing', '安装中...');
+  }
+  logInstall('> 开始后台安装...');
+
+  try {
+    if (backendAvailable) {
+      // 正常模式：通过 server.js API 安装（NDJSON 流）
+      await installViaServer(tools, logInstall);
+    } else {
+      // file:// 后备模式：通过 Electron IPC 安装
+      await installViaElectron(tools, logInstall);
+    }
+  } catch (e) {
+    logInstall(`> ❌ 安装出错: ${e.message}`);
+    for (const tool of tools) {
+      updateInstallUI(tool, 'error', '安装失败');
+    }
+  }
+
+  installRunning = false;
+  if (btn) { btn.disabled = true; btn.textContent = '✅ 安装完成'; }
+
+  // 显示继续按钮
+  const body = $('wizardBody');
+  const btnRow = body.querySelector('.btn-row');
+  if (btnRow && !body.querySelector('#btnContinueAfterInstall')) {
+    const continueBtn = document.createElement('button');
+    continueBtn.id = 'btnContinueAfterInstall';
+    continueBtn.className = 'btn btn-primary';
+    continueBtn.textContent = '装好了，继续 →';
+    continueBtn.onclick = () => goStep(2);
+    btnRow.appendChild(continueBtn);
+  }
+}
+
+function updateInstallUI(tool, status, text) {
+  const badge = $(`badge-${tool}`);
+  const icon = document.querySelector(`#status-${tool} .status-icon`);
+  if (badge) {
+    badge.textContent = text;
+    badge.className = `status-badge badge-${status === 'done' ? 'ok' : status === 'error' ? 'missing' : 'checking'}`;
+  }
+  if (icon) {
+    icon.className = `status-icon ${status === 'done' ? 'ok' : status === 'error' ? 'missing' : 'checking'}`;
+    icon.textContent = status === 'done' ? '✅' : status === 'error' ? '❌' : status === 'installing' ? '🔄' : '⏳';
+  }
+}
+
+async function installViaServer(tools, logInstall) {
+  return new Promise((resolve, reject) => {
+    fetch(apiUrl('/api/install-tools'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tools }),
+    }).then(async (resp) => {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const msg = JSON.parse(trimmed);
+            if (msg.type === 'install_status') {
+              updateInstallUI(msg.tool, msg.status, msg.message);
+              logInstall(`> ${msg.tool}: ${msg.message}`);
+            } else if (msg.type === 'install_done') {
+              logInstall(`> ${msg.message}`);
+            }
+          } catch {}
+        }
+      }
+      resolve();
+    }).catch(reject);
+  });
+}
+
+async function installViaElectron(tools, logInstall) {
+  if (!window.makoElectron || !window.makoElectron.installTools) {
+    logInstall('> ❌ 安装功能不可用（缺少 Electron 桥接）');
+    throw new Error('installTools not available');
+  }
+  const results = await window.makoElectron.installTools(tools);
+  for (const r of results) {
+    updateInstallUI(r.tool, r.status, r.message);
+    logInstall(`> ${r.tool}: ${r.message}`);
+  }
+}
+
+function renderStep2() {
+  return `
+    <div class="mako-bubble">
+      <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+      <div class="mako-msg">
+        现在来配置 API 连接。大部分用户用 DeepSeek 的 API，便宜又快速。<br>
+        如果主人用的是别的 API，把地址换成对应的就行啦。
+      </div>
+    </div>
+    <div class="input-group">
+      <label>API 地址 <button class="btn-preset-wiz" onclick="showPresetModalWiz()" title="一键套用其他大模型供应商预设">📋 预设</button></label>
+      <input type="text" id="apiEndpoint" value="${STATE.apiEndpoint}" placeholder="https://api.deepseek.com/anthropic">
+    </div>
+    <div class="input-group">
+      <label>API Key</label>
+      <input type="password" id="apiKey" value="${STATE.apiKey}" placeholder="sk-xxxxxxxxxxxxxxxx">
+    </div>
+    <div class="input-group">
+      <label>模型名称</label>
+      <input type="text" id="apiModel" value="${STATE.apiModel}" placeholder="deepseek-v4-flash">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goStep(1)">← 上一步</button>
+      <button class="btn btn-primary" onclick="saveAndProceed()">保存并测试 →</button>
+    </div>
+  `;
+}
+
+function renderStep3() {
+  return `
+    <div class="mako-bubble">
+      <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+      <div class="mako-msg">
+        让茉子试试能不能和 AI 引擎说上话……<br>
+        <span class="spinner"></span> 正在测试连接……
+      </div>
+    </div>
+    <div class="terminal-box" id="terminal"></div>
+    <div id="step3Result"></div>
+  `;
+}
+
+function renderStep4() {
+  return `
+    <div class="success-anim">
+      <span class="check">✅</span>
+      <span class="msg">一切就绪，主人！</span>
+      <p style="margin-top:12px;color:#999;">茉子已经准备好了。</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="finishSetup()" style="font-size:16px;padding:14px 40px;">
+        🌸 开始和茉子聊天吧
+      </button>
+    </div>
+  `;
+}
+
+// ==================== 步骤切换 ====================
+
+function updateStepIndicator(step) {
+  const dots = $('stepsBar').querySelectorAll('.step-dot');
+  dots.forEach((dot, i) => {
+    dot.classList.remove('active', 'done');
+    if (i < step) dot.classList.add('done');
+    if (i === step) dot.classList.add('active');
+  });
+}
+
+function goStep(n) {
+  STATE.step = n;
+  updateStepIndicator(n);
+  const body = $('wizardBody');
+  let content = '';
+  switch (n) {
+    case 0: content = renderStep0(); break;
+    case 1: content = renderStep1(); break;
+    case 2: content = renderStep2(); break;
+    case 3: content = renderStep3(); runConnectionTest(); break;
+    case 4: content = renderStep4(); break;
+  }
+  body.innerHTML = renderFileModeBanner() + content;
+}
+
+async function saveAndProceed() {
+  STATE.apiEndpoint = $('apiEndpoint').value.trim();
+  STATE.apiKey = $('apiKey').value.trim();
+  STATE.apiModel = $('apiModel').value.trim();
+
+  if (!STATE.apiKey) {
+    alert('主人，API Key 不能为空哦～');
+    return;
+  }
+
+  // 如果后端不可用，先尝试检测后端是否已就绪
+  if (!backendAvailable) {
+    const ok = await checkBackend();
+    if (!ok) {
+      alert('主人，茉子的后端服务还没启动呢～\n\n请先安装 Node.js，然后重新打开 MakoCode。\n\n安装完 Node.js 后，也可以点"重试连接"按钮试试看。');
+      return;
+    }
+    backendAvailable = true;
+  }
+
+  // 保存设置
+  try {
+    await fetch(apiUrl('/api/save-settings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ANTHROPIC_BASE_URL: STATE.apiEndpoint,
+        ANTHROPIC_AUTH_TOKEN: STATE.apiKey,
+        ANTHROPIC_MODEL: STATE.apiModel,
+      }),
+    });
+  } catch (e) {
+    console.error('保存设置失败:', e);
+    alert('主人，保存设置失败了…茉子的后端可能还没启动。\n\n请确认 Node.js 已安装，然后重新打开 MakoCode。');
+    return;
+  }
+
+  goStep(3);
+}
+
+async function runConnectionTest() {
+  const term = $('terminal');
+  if (term) {
+    term.style.display = 'block';
+    term.textContent = '> 正在测试 API 连接……\r\n';
+  }
+
+  // 如果后端不可用，提示用户
+  if (!backendAvailable) {
+    if (term) term.textContent += '> ❌ 后端服务未启动，无法测试连接。请先安装 Node.js 后重新打开应用。\r\n';
+    const resultDiv = $('step3Result');
+    if (resultDiv) {
+      resultDiv.innerHTML = `
+        <div class="mako-bubble" style="margin-top:16px;">
+          <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+          <div class="mako-msg">
+            唔…茉子的后端还没醒来呢<br><br>
+            <span style="color:var(--warning);">请主人先安装 Node.js，然后重新打开 MakoCode。</span><br><br>
+            也可以试试下面的"重试连接"按钮～
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goStep(2)">← 修改配置</button>
+          <button class="btn btn-primary" onclick="retryBackend()">🔄 重试连接</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  try {
+    const resp = await fetch(apiUrl('/api/test-connection'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: STATE.apiEndpoint,
+        key: STATE.apiKey,
+        model: STATE.apiModel,
+      }),
+    });
+    const data = await resp.json();
+
+    if (term) term.textContent += `> ${data.ok ? '✅ ' : '❌ '}${data.message || JSON.stringify(data)}\r\n`;
+
+    const resultDiv = $('step3Result');
+    if (resultDiv) {
+      if (data.ok) {
+        resultDiv.innerHTML = `
+          <div class="mako-bubble" style="margin-top:16px;">
+            <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+            <div class="mako-msg">
+              连接测试成功！茉子和 AI 引擎已经可以对话啦～<br>
+              主人，我们准备好了！
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="goStep(2)">← 修改配置</button>
+            <button class="btn btn-primary" onclick="goStep(4)">完成设置！🎉</button>
+          </div>
+        `;
+      } else {
+        resultDiv.innerHTML = `
+          <div class="mako-bubble" style="margin-top:16px;">
+            <div class="mako-avatar"><img src="assets/images/0cb495904212b96009e6e987647dba571389871921.jpg" style="width:48px;height:48px;border-radius:50%;object-fit:cover;" alt="茉子"></div>
+            <div class="mako-msg">
+              唔…连接好像有问题：<br>
+              <span style="color:var(--error)">${data.message || '未知错误'}</span><br><br>
+              主人可以回去检查一下 API 地址和 Key 有没有写错。
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="goStep(2)">← 回去修改</button>
+            <button class="btn btn-primary" onclick="goStep(4)">不管了，先进去再说</button>
+          </div>
+        `;
+      }
+    }
+  } catch (e) {
+    if (term) term.textContent += `> ❌ 测试失败：${e.message}\r\n`;
+  }
+}
+
+async function finishSetup() {
+  // 收集用户勾选了哪些工具（未勾选的安装包将被删除）
+  const keepTools = [];
+  if (STATE.needInstall.node) keepTools.push('node');
+  if (STATE.needInstall.git) keepTools.push('git');
+  if (STATE.needInstall.claude) keepTools.push('claude');
+
+  // 写入标记文件 + 清理未勾选的安装包
+  try {
+    await fetch(apiUrl('/api/finish-setup'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keepTools }),
+    });
+  } catch (e) {
+    console.error('标记完成失败:', e);
+  }
+
+  // file:// 模式也做清理（通过 Electron IPC）
+  if (IS_FILE_PROTOCOL && window.makoElectron && window.makoElectron.cleanupBundledTools) {
+    try { await window.makoElectron.cleanupBundledTools(); } catch {}
+  }
+
+  // 跳转到主聊天界面
+  window.location.href = apiUrl('/galchat.html') || '/galchat.html';
+}
+
+// ==================== 后端可用性检测 ====================
+
+async function checkBackend() {
+  try {
+    const resp = await fetch(apiUrl('/api/projects'), { method: 'GET' });
+    return resp.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+async function retryBackend() {
+  const term = $('terminal');
+  if (term) {
+    term.style.display = 'block';
+    term.textContent = '> 正在尝试连接茉子的后端服务……\r\n';
+  }
+
+  const ok = await checkBackend();
+  if (ok) {
+    backendAvailable = true;
+    if (term) term.textContent += '> ✅ 后端已连接！可以正常使用啦～\r\n';
+    // 如果之前在 Step 3，重新运行测试
+    if (STATE.step === 3) {
+      setTimeout(() => runConnectionTest(), 500);
+    } else {
+      goStep(STATE.step); // 刷新当前步骤
+    }
+  } else {
+    if (term) term.textContent += '> ❌ 后端仍未就绪。请确保 Node.js 已安装，然后重启 MakoCode。\r\n';
+  }
+}
+
+// ==================== file:// 模式提示条 ====================
+
+function renderFileModeBanner() {
+  if (!IS_FILE_PROTOCOL) return '';
+  return `
+    <div style="background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--warning);text-align:center;margin-bottom:4px;">
+      ⚠️ 后端服务未启动 — 部分功能不可用。安装 Node.js 后请重启 MakoCode。
+      <button onclick="retryBackend()" style="margin-left:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:var(--text);cursor:pointer;padding:2px 10px;font-size:11px;">🔄 重试</button>
+    </div>
+  `;
+}
+
+// ==================== LLM 供应商预设（向导） ====================
+let allPresetsWiz = [];
+
+async function showPresetModalWiz() {
+  const overlay = document.getElementById('preset-overlay-wiz');
+  const list = document.getElementById('preset-list-wiz');
+  if (!overlay || !list) return;
+
+  if (allPresetsWiz.length === 0) {
+    try {
+      const apiBase = IS_FILE_PROTOCOL ? '' : `${window.location.protocol}//${window.location.host}`;
+      const r = await fetch(`${apiBase}/api/llm-presets`);
+      if (r.ok) allPresetsWiz = await r.json();
+    } catch (e) {
+      // 后端未启动时回退到硬编码数据
+      allPresetsWiz = getFallbackPresets();
+    }
+  }
+
+  let html = '';
+  for (const p of allPresetsWiz) {
+    html += `<div class="preset-card-wiz" onclick="applyPresetWiz('${p.id}')" title="${p.note.replace(/'/g, "\\'")}">
+      <div class="preset-name">${escHtmlWiz(p.name)}</div>
+      <div class="preset-model">${escHtmlWiz(p.defaultModel)}</div>
+      <div class="preset-note">${escHtmlWiz(p.note)}</div>
+    </div>`;
+  }
+  list.innerHTML = html;
+  overlay.style.display = 'flex';
+}
+
+function closePresetModalWiz() {
+  const overlay = document.getElementById('preset-overlay-wiz');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function applyPresetWiz(id) {
+  const preset = allPresetsWiz.find(p => p.id === id);
+  if (!preset) return;
+
+  const epEl = document.getElementById('apiEndpoint');
+  const mdlEl = document.getElementById('apiModel');
+  if (epEl) epEl.value = preset.baseUrl;
+  if (mdlEl) mdlEl.value = preset.defaultModel;
+
+  // 同步 STATE
+  STATE.apiEndpoint = preset.baseUrl;
+  STATE.apiModel = preset.defaultModel;
+
+  closePresetModalWiz();
+}
+
+function escHtmlWiz(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// file:// 模式回退预设数据（后端未启动时使用）
+function getFallbackPresets() {
+  return [
+    { id: 'deepseek', name: '🚀 DeepSeek', baseUrl: 'https://api.deepseek.com/anthropic', defaultModel: 'deepseek-v4-flash', note: '国产性价比之王，按量计费，默认配置' },
+    { id: 'anthropic', name: '🏛️ Anthropic (官方)', baseUrl: 'https://api.anthropic.com', defaultModel: 'claude-sonnet-4-6', note: '原生支持，需VPN，$15+/M tokens' },
+    { id: 'openrouter', name: '🔀 OpenRouter', baseUrl: 'https://openrouter.ai/api', defaultModel: 'deepseek/deepseek-chat', note: '200+模型聚合，一个Key通吃' },
+    { id: 'siliconflow', name: '⚡ 硅基流动', baseUrl: 'https://api.siliconflow.cn/v1/anthropic', defaultModel: 'deepseek-ai/DeepSeek-V3', note: '国产开源模型聚合，推理加速' },
+  ];
+}
+
+// ==================== 初始化 ====================
+
+// 从 file:// 加载时，先检测后端是否已恢复
+(async function initBackendCheck() {
+  if (IS_FILE_PROTOCOL) {
+    const ok = await checkBackend();
+    if (ok) {
+      // 后端已启动！跳转到 HTTP 版本的向导（功能完整）
+      backendAvailable = true;
+      window.location.href = 'http://127.0.0.1:8080/wizard.html';
+      return;
+    }
+  }
+})();
+
+// 生成背景粒子
+(function initParticles() {
+  const container = $('particles');
+  for (let i = 0; i < 30; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.width = p.style.height = (Math.random() * 4 + 1) + 'px';
+    p.style.animationDelay = Math.random() * 8 + 's';
+    p.style.animationDuration = (Math.random() * 6 + 6) + 's';
+    container.appendChild(p);
+  }
+})();
+
+// 启动向导
+goStep(0);
+</script>
+
+</body>
+</html>
