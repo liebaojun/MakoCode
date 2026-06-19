@@ -237,7 +237,7 @@
     font-size: 16px; line-height: 1.85;
     font-weight: 400; letter-spacing: 0.2px;
     text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    white-space: pre-wrap;
+    white-space: pre-wrap; user-select: text;
   }
   #dialogue-plain .cursor {
     display: inline-block; width: 2px; height: 1.1em;
@@ -252,6 +252,7 @@
     font-size: 16px; line-height: 1.9;
     font-weight: 400; letter-spacing: 0.2px;
     text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    user-select: text;
   }
   /* Markdown 渲染后的内部样式 */
   #dialogue-rendered p { margin: 0 0 0.7em; }
@@ -348,6 +349,23 @@
     animation: hintPulse 2s ease-in-out infinite; cursor: pointer;
   }
   @keyframes hintPulse { 0%,100% { opacity:0.2; } 50% { opacity:0.6; } }
+
+  #copy-btn {
+    position: absolute; right: 20px; bottom: 10px; z-index: 30;
+    width: 30px; height: 30px; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+    color: rgba(255,255,255,0.5); font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s; font-family: inherit; line-height: 1;
+  }
+  #copy-btn:hover {
+    background: rgba(212,168,83,0.15); border-color: var(--gold);
+    color: var(--gold-light); box-shadow: 0 0 12px rgba(212,168,83,0.1);
+  }
+  #copy-btn.copied {
+    background: rgba(76,175,80,0.25); border-color: rgba(76,175,80,0.5);
+    color: #81C784; width: auto; padding: 0 12px; font-size: 12px;
+  }
 
   /* ===== 状态指示器 ===== */
   #status-bar {
@@ -950,6 +968,18 @@
     background: rgba(197,59,59,0.22); border-color: var(--vermilion);
     box-shadow: 0 0 24px rgba(197,59,59,0.2);
   }
+  #question-close-btn {
+    position: absolute; top: 16px; right: 20px; z-index: 131;
+    width: 32px; height: 32px; background: rgba(255,255,255,0.08);
+    border: 1.5px solid rgba(255,255,255,0.15); border-radius: 50%;
+    color: rgba(255,255,255,0.6); font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s; font-family: inherit; line-height: 1;
+  }
+  #question-close-btn:hover {
+    background: rgba(197,59,59,0.25); border-color: rgba(197,59,59,0.5);
+    color: var(--washi); box-shadow: 0 0 16px rgba(197,59,59,0.15);
+  }
 
   /* 错误提示 */
   #error-toast {
@@ -1143,6 +1173,7 @@
       </div>
       <div id="loading-dots"><span></span><span></span><span></span></div>
       <div id="click-hint">▼ 点击继续</div>
+      <button id="copy-btn" title="复制全文" onclick="copyClaudeText()" style="display:none">📋</button>
     </div>
     <!-- 快捷指令弹窗 -->
     <div id="cmd-popup"></div>
@@ -1164,6 +1195,7 @@
 
   <!-- 问题选项覆层 -->
   <div id="question-overlay">
+    <button id="question-close-btn" title="关闭不选">✕</button>
     <div id="question-text"></div>
     <div id="question-options"></div>
   </div>
@@ -1416,6 +1448,7 @@ let history = [];
 let isTyping = false;
 let typeTimer = null;
 let currentText = '';
+let lastClaudeText = '';  // 当前茉子回复的纯文本，供复制按钮使用
 let isSending = false;       // 正在发送/等待回复中
 let thinkBubbleTimer = null;  // 思考气泡定时器
 let yoshinoCarouselTimer = null;  // 芳乃思考短语轮播定时器
@@ -2060,6 +2093,8 @@ function showMsg(speaker, text, showInput) {
   startExprCycle(who);
   document.getElementById('loading-dots').classList.remove('show');
   document.getElementById('input-area').classList.remove('show');
+  // 用户消息时隐藏复制按钮（只有茉子回复才显示）
+  if (who === 'user') document.getElementById('copy-btn').style.display = 'none';
 
   typeWrite(text, () => {
     if (showInput) {
@@ -2081,6 +2116,7 @@ function showLoading() {
   document.getElementById('text-content').textContent = '';
   document.getElementById('type-cursor').style.display = 'none';
   document.getElementById('click-hint').style.display = 'none';
+  document.getElementById('copy-btn').style.display = 'none';
   document.getElementById('loading-dots').classList.add('show');
   document.getElementById('input-area').classList.remove('show');
   setCharState('thinking');
@@ -2634,22 +2670,39 @@ function detectTextOptions(text) {
 
   if (options.length < 2 || options.length > 5) return null;
 
-  // 提取选项前后的上下文
-  const beforeLines = lines.slice(Math.max(0, optionStart - 4), optionStart)
+  // 提取选项前后的上下文（扩展窗口：前 6 行 + 后 4 行）
+  const beforeLines = lines.slice(Math.max(0, optionStart - 6), optionStart)
     .filter(l => l.trim());
   const afterLines = lines.slice(lines.length > optionStart + options.length ? optionStart + options.length : lines.length)
-    .filter(l => l.trim()).slice(0, 3);
+    .filter(l => l.trim()).slice(0, 4);
   const contextText = [...beforeLines, ...afterLines].join(' ');
 
   // 智能判断：是"让我选"还是"列信息"？
-  const choiceKW = /选[一个]?|选择|挑[一个]?|想要哪|偏好|决定|你觉得|你想|帮你|哪个|which|choose|pick|prefer|帮我选|推荐|建议你/;
-  const infoKW = /以下是|如下|例如|比如|原因|理由|步骤|方法|方面|分类|有以下|包括|分为|the following|reasons|steps|example/;
+  // choiceKW — 明确邀请用户选择的词（删除模糊词"帮你"、"推荐"、"建议你"、"你觉得"、"你想"）
+  const choiceKW = /选[一个]?|选择|挑[一个]?|想要哪|偏好|决定|哪个|which|choose|pick|prefer|帮我选|你希望|你想选|你决定|你说了算|告诉我|指使/;
+  // infoKW — 信息列表/步骤说明的指示词（大幅扩充）
+  const infoKW = /以下是|如下|例如|比如|原因|理由|步骤|方法|方面|分类|有以下|包括|分为|流程|过程|操作|方式|技巧|说明|介绍|归纳|总结|共[有]?.*[步点条项]|首先|然后|接着|最后|the following|reasons|steps|example|首先.*然后|先.*再.*最后/;
 
-  const choiceScore = (contextText.match(choiceKW) || []).length;
-  const infoScore = (contextText.match(infoKW) || []).length;
+  // 上下文评分
+  const contextChoiceScore = (contextText.match(choiceKW) || []).length;
+  const contextInfoScore = (contextText.match(infoKW) || []).length;
 
-  // 有选择关键词 且 没有明显的信息列表关键词 → 弹窗
-  if (choiceScore === 0 || infoScore > choiceScore) return null;
+  // 全文评分（infoKW 扫全文，不怕步骤词离得远）
+  const fullInfoScore = (text.match(infoKW) || []).length;
+  const fullChoiceScore = (text.match(choiceKW) || []).length;
+
+  // 规则 1：全文明确是信息列表 → 不弹窗
+  if (fullInfoScore >= 2) return null;
+
+  // 规则 2：全文没有足够的选择邀请词 → 不弹窗（至少 2 个）
+  if (fullChoiceScore < 2) return null;
+
+  // 规则 3：上下文信息词多于选择词 → 不弹窗
+  if (contextInfoScore > contextChoiceScore) return null;
+
+  // 规则 4：必须包含明确的"邀请选择"语气
+  const inviteKW = /你想|你选|你要|你决定|选哪个|选一个|选哪个|选什么|挑哪个|告诉我|你希望|帮你选|偏好|想要哪|你说了算|指使/;
+  if (!inviteKW.test(contextText)) return null;
 
   const questionLines = beforeLines.slice(-2);
   const qText = questionLines.length > 0
@@ -2666,6 +2719,7 @@ function showQuestion(text, options, fromText) {
   const textEl = document.getElementById('question-text');
   const optsEl = document.getElementById('question-options');
 
+  document.getElementById('copy-btn').style.display = 'none';
   textEl.textContent = text || '请选择一个选项：';
   optsEl.innerHTML = options.map((opt, i) => {
     const isPrimary = i === 0 || /yes|allow|允许|是|确定|确认|继续/i.test(opt);
@@ -2681,10 +2735,52 @@ function showQuestion(text, options, fromText) {
       answerQuestion(idx, fromText);
     });
   });
+
+  // × 关闭按钮：不选任何选项直接关闭
+  const closeBtn = document.getElementById('question-close-btn');
+  closeBtn.onclick = () => {
+    hideQuestion();
+    // 恢复输入区域（用户跳过选择，可以继续对话）
+    setTimeout(() => {
+      document.getElementById('input-area').classList.add('show');
+      document.getElementById('user-input').focus();
+      resetInputHeight();
+    }, 300);
+  };
 }
 
 function hideQuestion() {
   document.getElementById('question-overlay').classList.remove('show');
+}
+
+function copyClaudeText() {
+  const text = lastClaudeText || '';
+  if (!text) return;
+  const copyBtn = document.getElementById('copy-btn');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      copyBtn.classList.add('copied');
+      copyBtn.textContent = '✓ 已复制';
+      setTimeout(() => {
+        copyBtn.classList.remove('copied');
+        copyBtn.textContent = '📋';
+      }, 1800);
+    }).catch(() => { /* silent */ });
+  } else {
+    // 降级方案：创建临时 textarea 选中复制
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch(e) { /* silent */ }
+    document.body.removeChild(ta);
+    copyBtn.classList.add('copied');
+    copyBtn.textContent = '✓ 已复制';
+    setTimeout(() => {
+      copyBtn.classList.remove('copied');
+      copyBtn.textContent = '📋';
+    }, 1800);
+  }
 }
 
 async function answerQuestion(index, fromText) {
@@ -2909,6 +3005,10 @@ async function chatWithClaude(msg, files) {
   history.push({ speaker: '茉子', text: displayText });
   renderHistory();
   setStatus('connected', '已连接');
+
+  // 保存当前回复文本供复制按钮使用，显示复制按钮
+  lastClaudeText = displayText;
+  document.getElementById('copy-btn').style.display = 'flex';
 
   // 检测回复中是否包含选项式问题（如 "1. xxx 2. yyy 3. zzz"）
   const textOptions = detectTextOptions(displayText);
