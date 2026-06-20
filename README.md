@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://count.getloli.com/@makocode?theme=gelbooru&padding=7&scale=1&num=152" alt="visitors">
+  <img src="https://count.getloli.com/@makocode?theme=gelbooru&padding=7&scale=1" alt="visitors">
 </p>
 
 ---
