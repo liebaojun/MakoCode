@@ -370,9 +370,11 @@
   /* ===== 状态指示器 ===== */
   #status-bar {
     position: absolute; top: 14px; right: 16px; z-index: 50;
-    display: flex; flex-direction: column; align-items: flex-end;
+    display: none; /* 初始隐藏，游戏开始后显示 */
+    flex-direction: column; align-items: flex-end;
     gap: 6px;
   }
+  #status-bar.visible { display: flex; }
   /* Row 1: 退出 + 模型切换 */
   #status-row-actions {
     display: flex; align-items: center; gap: 8px;
@@ -1000,6 +1002,62 @@
     #title-screen h1 { font-size: 28px; }
     .think-bubble { max-width: 180px; font-size: 10px; }
   }
+
+  /* ─── Mode Switcher ──────────────────────────────────── */
+  #mode-switcher-container {
+    position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+    z-index: 100; display: none; /* 初始隐藏，游戏开始后显示 */
+    flex-direction: column; align-items: center;
+  }
+  #mode-switcher-container.visible { display: flex; }
+  #mode-switcher {
+    background: rgba(20, 20, 25, 0.85);
+    border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 4px; position: relative;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+  }
+  .mode-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 5px 8px; margin: 3px 0; border-radius: 10px;
+    cursor: pointer; position: relative; z-index: 0;
+    color: rgba(255,255,255,0.4); transition: color 0.2s;
+    user-select: none;
+  }
+  .mode-item .mode-icon { font-size: 16px; line-height: 1; }
+  .mode-item .mode-text { font-size: 10px; color: inherit; white-space: nowrap; line-height: 1; }
+  .mode-item.active { color: rgba(255,255,255,0.95); }
+  .mode-item:hover { color: rgba(255,255,255,0.7); }
+  #mode-indicator {
+    position: absolute; left: 2px; right: 2px;
+    height: 38px; border-radius: 10px;
+    background: rgba(255, 183, 77, 0.18);
+    border: 1px solid rgba(255, 183, 77, 0.45);
+    box-shadow: 0 0 14px rgba(255, 183, 77, 0.35);
+    transition: top 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 1; pointer-events: none;
+  }
+  .mode-tooltip {
+    position: absolute; right: 56px; top: 50%; transform: translateY(-50%);
+    background: rgba(30, 30, 38, 0.95); color: #eee;
+    padding: 8px 14px; border-radius: 8px; font-size: 12px;
+    white-space: nowrap; pointer-events: none; opacity: 0;
+    transition: opacity 0.2s; border: 1px solid rgba(255,255,255,0.08);
+  }
+  .mode-tooltip.visible { opacity: 1; }
+  .auto-mode-warning {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .auto-mode-warning-content {
+    background: #1a1a24; padding: 32px; border-radius: 16px;
+    text-align: center; max-width: 420px;
+    border: 1px solid rgba(255,183,77,0.3);
+  }
+  .auto-mode-warning-content button {
+    padding: 10px 28px; border-radius: 8px; font-size: 14px; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -1209,6 +1267,18 @@
         <button class="start-btn secondary" onclick="hideSaveList()">返 回</button>
       </div>
     </div>
+  </div>
+
+  <!-- 模式切换器 -->
+  <div id="mode-switcher-container">
+    <div id="mode-switcher">
+      <div id="mode-indicator"></div>
+      <div class="mode-item" data-mode="bypass"><span class="mode-icon">⚡</span><span class="mode-text">自动</span></div>
+      <div class="mode-item" data-mode="plan"><span class="mode-icon">📋</span><span class="mode-text">计划</span></div>
+      <div class="mode-item" data-mode="acceptEdits"><span class="mode-icon">✏️</span><span class="mode-text">编辑</span></div>
+      <div class="mode-item" data-mode="default"><span class="mode-icon">🛡️</span><span class="mode-text">默认</span></div>
+    </div>
+    <div class="mode-tooltip" id="mode-tooltip"></div>
   </div>
 </div>
 
@@ -2878,7 +2948,7 @@ async function chatWithClaude(msg, files) {
           'mcp__playwright__browser_type', 'mcp__playwright__browser_press_key',
           'mcp__playwright__browser_wait_for', 'mcp__playwright__browser_click',
           'mcp__playwright__browser_take_screenshot', 'mcp__playwright__browser_evaluate'],
-        permissionMode: 'default',
+        permissionMode: currentPermissionMode,
         uploadedFiles: files || [],
         history: history.slice(0, -1).slice(-20), // 排除当前消息，带最近20条历史
       })
@@ -3605,6 +3675,7 @@ async function newGame() {
 
   initAssets();
   document.getElementById('title-screen').classList.add('hidden');
+  showGameUI();
 
   setTimeout(() => {
     setCharState('claude');
@@ -3670,6 +3741,7 @@ async function loadGame(saveId) {
     gameStarted = true;
     initAssets();
     document.getElementById('title-screen').classList.add('hidden');
+    showGameUI();
     hideSaveList();
 
     // 恢复最后一条对话的状态（直接显示，不打字）
@@ -3827,6 +3899,11 @@ async function saveAndExit() {
   document.getElementById('history-panel').classList.remove('open');
   // 重置状态指示
   setStatus('disconnected', '未连接');
+  // 隐藏状态栏和模式切换器（返回标题画面不应显示这些）
+  const statusBar = document.getElementById('status-bar');
+  const modeSwitcher = document.getElementById('mode-switcher-container');
+  if (statusBar) statusBar.classList.remove('visible');
+  if (modeSwitcher) modeSwitcher.classList.remove('visible');
   // 显示标题画面 + 切回标题BGM
   document.getElementById('title-screen').classList.remove('hidden');
   initBgm();
@@ -3853,11 +3930,11 @@ function updateModelUI() {
   if (currentModel === 'pro') {
     btn.textContent = '🔥 Pro';
     btn.classList.add('pro');
-    btn.title = '当前模型: deepseek-v4-pro（点击切换）';
+    btn.title = '当前模型: Pro（点击切换）';
   } else {
     btn.textContent = '⚡ Flash';
     btn.classList.remove('pro');
-    btn.title = '当前模型: deepseek-v4-flash（点击切换）';
+    btn.title = '当前模型: Flash（点击切换）';
   }
   btn.style.cursor = 'pointer';
   btn.onclick = toggleModel;
@@ -3937,6 +4014,174 @@ document.addEventListener('keydown', (e) => {
     saveAndExit();
   }
 });
+
+// ─── Mode Switcher ────────────────────────────────────────
+let currentPermissionMode = 'default';
+const MODE_ORDER = ['bypass', 'plan', 'acceptEdits', 'default'];
+function initModeSwitcher() {
+  const saved = localStorage.getItem('mako-permission-mode');
+  if (saved && MODE_ORDER.includes(saved)) currentPermissionMode = saved;
+
+  const indicator = document.getElementById('mode-indicator');
+  const items = document.querySelectorAll('.mode-item');
+  const tooltip = document.getElementById('mode-tooltip');
+  const switcher = document.getElementById('mode-switcher');
+
+  function updateUI() {
+    const idx = MODE_ORDER.indexOf(currentPermissionMode);
+    const item = items[idx];
+    if (indicator && item && switcher) {
+      // Use getBoundingClientRect() so positions are always in the same viewport-relative
+      // coordinate system, regardless of different offsetParents. offsetTop would give
+      // wrong results when item and switcher have different positioned ancestors.
+      const swRect = switcher.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      indicator.style.top = (itemRect.top - swRect.top) + 'px';
+    }
+    items.forEach(el => el.classList.remove('active'));
+    if (item) item.classList.add('active');
+    localStorage.setItem('mako-permission-mode', currentPermissionMode);
+  }
+
+  // Click to switch
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      const mode = item.dataset.mode;
+      if (mode === currentPermissionMode) return;
+      if (mode === 'bypass' && !localStorage.getItem('mako-auto-mode-confirmed')) {
+        showAutoModeWarning(() => {
+          localStorage.setItem('mako-auto-mode-confirmed', '1');
+          currentPermissionMode = mode;
+          updateUI();
+          sendModeToServer(mode);
+        });
+        return;
+      }
+      currentPermissionMode = mode;
+      updateUI();
+      sendModeToServer(mode);
+    });
+  });
+
+  // Hover tooltip with 300ms delay
+  let tooltipTimer;
+  items.forEach(item => {
+    item.addEventListener('mouseenter', () => {
+      const mode = item.dataset.mode;
+      const descs = {
+        bypass: '完全自主执行，适合沙箱/CI',
+        plan: '纯只读模式，不能修改文件',
+        acceptEdits: '文件读写自动通过，Shell仍需确认',
+        default: '每步确认，最安全'
+      };
+      tooltipTimer = setTimeout(() => {
+        if (tooltip) { tooltip.textContent = descs[mode]; tooltip.classList.add('visible'); }
+      }, 300);
+    });
+    item.addEventListener('mouseleave', () => {
+      clearTimeout(tooltipTimer);
+      if (tooltip) tooltip.classList.remove('visible');
+    });
+  });
+
+  // Drag on the switcher container
+  let dragging = false;
+  if (switcher) {
+    switcher.addEventListener('mousedown', (e) => {
+      dragging = true; e.preventDefault();
+    });
+  }
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging || !switcher) return;
+    const rect = switcher.getBoundingClientRect();
+    const itemHeight = 42;
+    const relY = e.clientY - rect.top - 4;
+    let idx = Math.round(relY / itemHeight);
+    idx = Math.max(0, Math.min(3, idx));
+    const newMode = MODE_ORDER[idx];
+    if (newMode !== currentPermissionMode) {
+      if (newMode === 'bypass' && !localStorage.getItem('mako-auto-mode-confirmed')) {
+        dragging = false;
+        showAutoModeWarning(() => {
+          localStorage.setItem('mako-auto-mode-confirmed', '1');
+          currentPermissionMode = newMode;
+          updateUI();
+          sendModeToServer(newMode);
+        });
+        return;
+      }
+      currentPermissionMode = newMode;
+      updateUI();
+      sendModeToServer(newMode);
+    }
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+
+  // Keyboard shortcut: Ctrl+Shift+M
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'M') {
+      e.preventDefault();
+      const idx = MODE_ORDER.indexOf(currentPermissionMode);
+      const next = (idx + 1) % 4;
+      currentPermissionMode = MODE_ORDER[next];
+      updateUI();
+      sendModeToServer(currentPermissionMode);
+    }
+  });
+
+  // Triple guarantee for capsule positioning:
+  // (1) Double rAF waits for render pipeline to settle
+  // (2) setTimeout(100ms) catches cases where layout is slower than 2 frames
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { updateUI(); });
+  });
+  setTimeout(() => { updateUI(); }, 100);
+  // Expose for showGameUI() (which is called later when the container becomes visible)
+  window.__updateModeUI = updateUI;
+  // 初始化时同步模式到服务器（否则 localStorage 恢复的模式与服务器不一致）
+  sendModeToServer(currentPermissionMode);
+}
+
+function showGameUI() {
+  const statusBar = document.getElementById('status-bar');
+  const modeSwitcher = document.getElementById('mode-switcher-container');
+  if (statusBar) statusBar.classList.add('visible');
+  if (modeSwitcher) {
+    modeSwitcher.classList.add('visible');
+    // Now that the switcher is visible, recalculate capsule position.
+    // Double rAF ensures the browser has laid out the newly visible elements
+    // before getBoundingClientRect() is called.
+    if (window.__updateModeUI) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => window.__updateModeUI());
+      });
+    }
+  }
+}
+
+function sendModeToServer(mode) {
+  fetch(`${API}/api/mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode })
+  }).catch(() => {});
+}
+
+function showAutoModeWarning(onConfirm) {
+  const div = document.createElement('div');
+  div.className = 'auto-mode-warning';
+  div.innerHTML = '<div class="auto-mode-warning-content"><h3 style="color:#ffb74d;margin:0 0 12px">⚠️ 自动模式</h3><p style="color:#ccc;font-size:14px;line-height:1.6;margin:0 0 20px">Claude将完全自主执行所有操作，包括文件修改、Shell命令等。<br>建议仅在沙箱环境或CI中使用。</p><button id="auto-mode-confirm" style="background:#ffb74d;color:#000;border:none;padding:10px 28px;border-radius:8px;font-size:14px;cursor:pointer;margin-right:12px;">确认启用</button><button id="auto-mode-cancel" style="background:transparent;color:#999;border:1px solid #444;padding:10px 28px;border-radius:8px;font-size:14px;cursor:pointer;">取消</button></div>';
+  document.body.appendChild(div);
+  div.querySelector('#auto-mode-confirm').onclick = () => { div.remove(); onConfirm(); };
+  div.querySelector('#auto-mode-cancel').onclick = () => { div.remove(); };
+}
+
+// Initialize mode switcher on load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initModeSwitcher);
+} else {
+  initModeSwitcher();
+}
 </script>
 </body>
 </html>

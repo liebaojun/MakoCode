@@ -37,10 +37,29 @@ const pendingQuestions = new Map(); // qId -> { proc, res }
 const log = createLogger('server');
 const MIME = MIME_TYPES; // 向后兼容别名
 
+// 安全工具列表：在 default/plan 模式下自动允许，不弹权限窗口
+const SAFE_TOOLS = new Set([
+  'Read', 'Glob', 'Grep', 'TaskList', 'TaskGet',
+  'WebSearch', 'WebFetch',
+  'Skill', 'CronList',
+  'mcp__playwright__browser_snapshot', 'mcp__playwright__browser_navigate',
+  'mcp__playwright__browser_console_messages',
+]);
+
 // ─── 设置初始化 ─────────────────────────────────────────
 settings.load(__dirname);
 // 向后兼容：暴露 currentModel 变量（其他代码直接引用）
 let currentModel = settings.getCurrentModel();
+let currentModelMode = 'flash'; // 追踪用户选择的模式标签，独立于模型字符串
+let permissionMode = 'default'; // 权限模式：default/acceptEdits/plan/bypass
+// 启动时根据当前模型判断初始模式
+(function initModelMode() {
+  const flashModel = process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+  const proModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro';
+  if (currentModel === proModel && currentModel !== flashModel) {
+    currentModelMode = 'pro';
+  }
+})();
 // 向后兼容函数别名
 function buildEnv() { return settings.buildEnv(); }
 function loadMakoSettings() { settings.load(__dirname); currentModel = settings.getCurrentModel(); }
@@ -150,7 +169,7 @@ function deleteSave(res, id) {
 
 // ─── HTTP 服务器 ─────────────────────────────────────
 const server = http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1:8080");
+  res.setHeader("Access-Control-Allow-Origin", `http://127.0.0.1:${PORT}`);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -189,7 +208,7 @@ const server = http.createServer((req, res) => {
     // 读取当前模型
     if (url.pathname === "/api/model") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ model: currentModel, label: modelLabel(currentModel) }));
+      res.end(JSON.stringify({ model: currentModel, label: currentModelMode === 'pro' ? 'Pro' : 'Flash' }));
       return;
     }
 
@@ -371,7 +390,8 @@ const server = http.createServer((req, res) => {
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => {
         try {
-          const { message, sessionId, allowedTools, permissionMode, uploadedFiles, history } = JSON.parse(body);
+          const { message, sessionId, allowedTools, permissionMode: reqPermMode, uploadedFiles, history } = JSON.parse(body);
+          const effectivePermMode = (reqPermMode && reqPermMode !== 'default') ? reqPermMode : permissionMode;
           let prompt = (message || "").trim();
 
           // ═══════════════════════════════════════════════════════
@@ -409,7 +429,10 @@ const server = http.createServer((req, res) => {
           const modelMatch = prompt.match(/^\/model\s+(pro|flash)$/i);
           if (modelMatch) {
             const target = modelMatch[1].toLowerCase();
-            currentModel = target === 'pro' ? 'deepseek-v4-pro' : 'deepseek-v4-flash';
+            const flashModel = process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+            const proModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro';
+            currentModel = target === 'pro' ? proModel : flashModel;
+            currentModelMode = target === 'pro' ? 'pro' : 'flash';
             log(`Model switched to: ${currentModel} (via chat command)`);
             res.writeHead(200, {
               "Content-Type": "application/x-ndjson",
@@ -468,12 +491,15 @@ const server = http.createServer((req, res) => {
             return;
           }
           log(`Chat: ${prompt.substring(0, 120)}...`);
+          // 注入当前权限模式，让茉子知道自己所处的模式
+          const modeLabels = { default: '默认模式（每步操作都需要确认）', acceptEdits: '编辑模式（文件读写自动通过，Shell仍需确认）', plan: '计划模式（纯只读，不能修改文件）', bypass: '自动模式（完全自主执行所有操作）' };
+          prompt = prompt + '\n\n[系统提示：当前会话运行在「' + (modeLabels[effectivePermMode] || effectivePermMode) + '」。]';
           res.writeHead(200, {
             "Content-Type": "application/x-ndjson",
             "Cache-Control": "no-cache",
             Connection: "keep-alive",
           });
-          streamChat(res, prompt, sessionId, allowedTools, permissionMode);
+          streamChat(res, prompt, sessionId, allowedTools, effectivePermMode);
         } catch (e) {
           log(`Parse error: ${e.message}`);
           endWithError(res, "请求体 JSON 格式错误");
@@ -528,17 +554,43 @@ const server = http.createServer((req, res) => {
       req.on("end", () => {
         try {
           const { model } = JSON.parse(body);
-          if (model === "flash" || model === "deepseek-v4-flash") {
-            currentModel = "deepseek-v4-flash";
-          } else if (model === "pro" || model === "deepseek-v4-pro") {
-            currentModel = "deepseek-v4-pro";
+          const flashModel = process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+          const proModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro';
+          if (model === "flash" || model === flashModel) {
+            currentModel = flashModel;
+            currentModelMode = 'flash';
+          } else if (model === "pro" || model === proModel) {
+            currentModel = proModel;
+            currentModelMode = 'pro';
           } else {
             jsonError(res, "未知模型，可选 flash / pro");
             return;
           }
           log(`Model switched to: ${currentModel}`);
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ model: currentModel, label: modelLabel(currentModel) }));
+          res.end(JSON.stringify({ model: currentModel, label: currentModelMode === 'pro' ? 'Pro' : 'Flash' }));
+        } catch {
+          jsonError(res, "JSON 格式错误");
+        }
+      });
+      return;
+    }
+
+    // 切换权限模式
+    if (url.pathname === "/api/mode") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const { mode } = JSON.parse(body);
+          if (!["default", "acceptEdits", "plan", "bypass"].includes(mode)) {
+            jsonError(res, "无效模式，可选 default/acceptEdits/plan/bypass");
+            return;
+          }
+          permissionMode = mode;
+          log(`Permission mode set to: ${permissionMode}`);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ mode: permissionMode }));
         } catch {
           jsonError(res, "JSON 格式错误");
         }
@@ -609,6 +661,13 @@ const server = http.createServer((req, res) => {
             if (filtered.ANTHROPIC_MODEL) {
               currentModel = filtered.ANTHROPIC_MODEL;
               log(`currentModel synced from settings: ${currentModel}`);
+              const proModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro';
+              const flashModel = process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+              if (currentModel === proModel && currentModel !== flashModel) {
+                currentModelMode = 'pro';
+              } else {
+                currentModelMode = 'flash';
+              }
             }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ ok: true, model: currentModel, label: modelLabel(currentModel) }));
@@ -744,7 +803,16 @@ const server = http.createServer((req, res) => {
             }
           }
           const ok = saveMakoSettings(filtered);
-          if (filtered.ANTHROPIC_MODEL) currentModel = filtered.ANTHROPIC_MODEL;
+          if (filtered.ANTHROPIC_MODEL) {
+            currentModel = filtered.ANTHROPIC_MODEL;
+            const proModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro';
+            const flashModel = process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+            if (currentModel === proModel && currentModel !== flashModel) {
+              currentModelMode = 'pro';
+            } else {
+              currentModelMode = 'flash';
+            }
+          }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok }));
         } catch { jsonError(res, "JSON 格式错误"); }
@@ -876,7 +944,10 @@ function streamChat(res, prompt, sessionId, allowedTools, permissionMode) {
   }
 
   if (permissionMode && permissionMode !== "default") {
-    args.push("--permission-mode", permissionMode);
+    // MakoCode 的 bypass → Claude CLI 的 bypassPermissions，其余直接通过
+    const CLI_MODE_MAP = { bypass: 'bypassPermissions' };
+    const cliMode = CLI_MODE_MAP[permissionMode] || permissionMode;
+    args.push("--permission-mode", cliMode);
   }
 
   // --model 显式指定模型，优先级高于 settings.json 的 env.ANTHROPIC_MODEL
@@ -974,6 +1045,15 @@ function streamChat(res, prompt, sessionId, allowedTools, permissionMode) {
                 message: { type: 'tool_use', name: block.name }
               });
               if (question) {
+                // 自动允许 SAFE_TOOLS，不弹权限窗口
+                if (question.autoAllow) {
+                  const entry = pendingQuestions.get(qId);
+                  if (entry) {
+                    const respMsg = JSON.stringify({ type: "user", message: { role: "user", content: question.answer || 'yes' } });
+                    entry.proc.stdin.write(respMsg + "\n");
+                  }
+                  break; // 只处理第一个 tool_use
+                }
                 const entry = pendingQuestions.get(qId);
                 if (entry) entry.question = question;
                 writeLine(res, { type: "gallm_question", data: question });
@@ -1099,6 +1179,10 @@ function detectQuestion(msg) {
   }
   // 检查 assistant 消息中的 tool_use（需要权限的）
   if (msg.type === 'assistant' && msg.message?.type === 'tool_use') {
+    // bypass 模式：自动允许所有工具；其他模式：SAFE_TOOLS 自动允许
+    if (permissionMode === 'bypass' || SAFE_TOOLS.has(msg.message.name)) {
+      return { autoAllow: true, answer: 'yes' };
+    }
     return {
       text: `是否允许使用 "${msg.message.name}" 工具？`,
       options: ['允许 (yes)', '总是允许 (yes always)', '拒绝 (no)'],
@@ -1159,6 +1243,44 @@ function handleUpload(res, body) {
 // 已提取至 lib/installer.js，通过 installer 模块调用
 // installer.installToolsStreaming(res, __dirname, tools)
 // installer.cleanupBundledTools(appDir, keepTools)
+
+// ─── 端口冲突处理 ────────────────────────────────────
+// 启动前清理残留端口（Fix B：主动释放被占用的端口）
+try {
+  require('child_process').execSync(
+    `powershell -NoProfile -Command "$p=(Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue).OwningProcess; if($p){Stop-Process -Id $p -Force}"`,
+    { stdio: 'pipe', timeout: 5000 }
+  );
+} catch (e) {}
+
+// 端口冲突错误处理：自动清理并重试（Fix A：EADDRINUSE 不崩溃）
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    log(`Port ${PORT} is in use, attempting to free it...`);
+    try {
+      require('child_process').execSync(
+        `powershell -NoProfile -Command "$p=(Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue).OwningProcess; if($p){Stop-Process -Id $p -Force}"`,
+        { stdio: 'pipe', timeout: 5000 }
+      );
+      // Retry after cleanup
+      setTimeout(() => {
+        server.close();
+        server.listen(PORT, '127.0.0.1');
+      }, 1000);
+      return;
+    } catch (e) {
+      log(`Failed to free port: ${e.message}`);
+      // 即使 PowerShell 清理失败，仍延迟重试而非直接退出
+      setTimeout(() => {
+        server.close();
+        server.listen(PORT, '127.0.0.1');
+      }, 3000);
+      return;
+    }
+  }
+  log(`Server error: ${err.message}`);
+  process.exit(1);
+});
 
 // ─── 启动 ────────────────────────────────────────────
 server.listen(PORT, "127.0.0.1", () => {

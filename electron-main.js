@@ -1,14 +1,14 @@
-﻿/**
- * MakoCode Electron 涓昏繘绋?
- * - 鍚姩 server.js 鍚庣
- * - 鍒涘缓绐楀彛鍔犺浇 galchat.html
- * - 绠＄悊搴旂敤鐢熷懡鍛ㄦ湡
- * - 鑷姩鏇存柊锛坋lectron-updater + NSIS 闈欓粯瀹夎锛?
+/**
+ * MakoCode Electron 主进程
+ * - 启动 server.js 后端
+ * - 创建窗口加载 galchat.html
+ * - 管理应用生命周期
+ * - 自动更新（electron-updater + NSIS 静默安装）
  *
- * 鈿狅笍 闃查€掑綊璁捐锛?
- *   瀛愯繘绋嬮€氳繃 MAKO_SERVER_MODE=1 鐜鍙橀噺鏍囪锛屽彧杩愯 server.js锛?
- *   涓嶅垱寤轰换浣?BrowserWindow銆傝繖闃叉浜?spawn(process.execPath) 鈫?閫掑綊鍚姩
- *   Electron 鈫?鍐?spawn 鈫?鍐嶅惎鍔?鐨勬棤闄愬惊鐜紙fork bomb锛夈€?
+ * ⚠️ 防递归设计：
+ *   子进程通过 MAKO_SERVER_MODE=1 环境变量标记，只运行 server.js，
+ *   不创建任何 BrowserWindow。这防止了 spawn(process.execPath) → 递归启动
+ *   Electron → 再 spawn → 再启动 的无限循环（fork bomb）。
  */
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { spawn, spawnSync } = require('child_process');
@@ -17,55 +17,55 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 
-// 鈹€鈹€鈹€ 瀵煎叆鍏变韩妯″潡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 导入共享模块 ──────────────────────────────────────
 const { DEFAULT_PORT, WINDOW_DEFAULTS, UPDATE_CHECK_DELAY_MS, UPDATE_CHECK_INTERVAL_MS } = require('./lib/constants');
 const { createLogger } = require('./lib/utils');
 const log = createLogger('MakoCode');
 
 let autoUpdater = null; // lazy init in normal Electron mode
 
-// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-// 馃敀 鏈嶅姟妯″紡妫€娴?鈥?蹇呴』鍦ㄦ墍鏈?Electron 閫昏緫涔嬪墠鎵ц
-// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+// ═══════════════════════════════════════════════════════════
+// 🔒 服务模式检测 — 必须在所有 Electron 逻辑之前执行
+// ═══════════════════════════════════════════════════════════
 
 if (process.env.MAKO_SERVER_MODE === '1') {
-  // 鈹€鈹€ 绾?HTTP 鏈嶅姟妯″紡锛堟棤 GUI锛夆攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-  // 琚埗杩涚▼閫氳繃 spawn(process.execPath) 鍚姩锛?
-  // 鍙繍琛?server.js锛屼笉鍒涘缓浠讳綍绐楀彛
+  // ── 纯 HTTP 服务模式（无 GUI）──────────────────────
+  // 被父进程通过 spawn(process.execPath) 启动，
+  // 只运行 server.js，不创建任何窗口
   const serverPath = path.join(__dirname, 'server.js');
   if (fs.existsSync(serverPath)) {
     require(serverPath);
-    // server.js 璋冪敤 server.listen() 淇濇寔浜嬩欢寰幆瀛樻椿
-    // 姘歌繙涓嶆墽琛?app.whenReady()锛屼笉鍒涘缓 BrowserWindow
+    // server.js 调用 server.listen() 保持事件循环存活
+    // 永远不执行 app.whenReady()，不创建 BrowserWindow
   } else {
     console.error('[MakoCode] Server mode: server.js not found');
     process.exit(1);
   }
-  // 鈿狅笍 鍏抽敭锛氬埌杩欓噷鍚?module 椤跺眰浠ｇ爜鎵ц瀹屾瘯锛岃繘绋嬮潬 server.listen() 瀛樻椿
-  // 涓嬮潰鐨勬墍鏈?Electron 鍒濆鍖栦唬鐮侀兘涓嶄細鎵ц
+  // ⚠️ 关键：到这里后 module 顶层代码执行完毕，进程靠 server.listen() 存活
+  // 下面的所有 Electron 初始化代码都不会执行
 } else {
 
-// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-// 馃枼锔?姝ｅ父 Electron 搴旂敤妯″紡
-// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+// ═══════════════════════════════════════════════════════════
+// 🖥️ 正常 Electron 应用模式
+// ═══════════════════════════════════════════════════════════
 
-// 鈹€鈹€鈹€ 璺緞閰嶇疆 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-// asar: false 鈫?鎵€鏈夋枃浠跺潎鍦?__dirname 涓嬶紝鏃犻渶鍖哄垎 dev/packaged
+// ─── 路径配置 ────────────────────────────────────────
+// asar: false → 所有文件均在 __dirname 下，无需区分 dev/packaged
 const APP_DIR = __dirname;
 const SERVER_PORT = DEFAULT_PORT;
 const MAIN_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
-// 鈹€鈹€鈹€ 鐘舵€?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 状态 ────────────────────────────────────────────
 let serverProc = null;
 let mainWindow = null;
 let serverReady = false;
 
-// 鈹€鈹€鈹€ 娓呯悊鏃ц繘绋?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-// Windows 涓?SIGTERM 涓嶅彲闈狅紝蹇呴』鐢?taskkill /F /T 鏉€鏁翠釜杩涚▼鏍?
+// ─── 清理旧进程 ──────────────────────────────────────
+// Windows 上 SIGTERM 不可靠，必须用 taskkill /F /T 杀整个进程树
 function killServerProc() {
   if (serverProc && serverProc.exitCode === null) {
     try {
-      // /F = 寮哄埗 /T = 杩涚▼鏍戯紙鍚瓩杩涚▼濡?claude.exe锛?
+      // /F = 强制 /T = 进程树（含孙进程如 claude.exe）
       spawnSync('taskkill', ['/PID', String(serverProc.pid), '/F', '/T'], { stdio: 'pipe' });
       log(`Server process tree killed`);
     } catch {}
@@ -84,7 +84,7 @@ function killOldServer() {
   } catch {}
 }
 
-// 鈹€鈹€鈹€ 鍚姩 server.js 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 启动 server.js ─────────────────────────────────
 function startServer() {
   return new Promise((resolve, reject) => {
     const serverPath = path.join(APP_DIR, 'server.js');
@@ -93,11 +93,11 @@ function startServer() {
       return;
     }
 
-    // 鍏堟竻鐞嗘棫杩涚▼锛岄伩鍏?EADDRINUSE
+    // 先清理旧进程，避免 EADDRINUSE
     killOldServer();
     log(`Starting server in child process`);
 
-    // 璇诲彇 mako-settings.json 涓殑鐜鍙橀噺璁剧疆
+    // 读取 mako-settings.json 中的环境变量设置
     const settingsPath = path.join(APP_DIR, 'mako-settings.json');
     let envSettings = {};
     try {
@@ -106,7 +106,7 @@ function startServer() {
       }
     } catch (e) { /* ignore */ }
 
-    // 鏌ユ壘 claude 鍙墽琛屾枃浠惰矾寰勶紙npm 鍏ㄥ眬瀹夎鐨?Claude Code CLI锛?
+    // 查找 claude 可执行文件路径（npm 全局安装的 Claude Code CLI）
     const npmGlobalPaths = [
       path.join(process.env.APPDATA || '', 'npm'),
       path.join(process.env.LOCALAPPDATA || '', 'npm-cache'),
@@ -122,14 +122,14 @@ function startServer() {
     const env = {
       ...process.env,
       PATH: `${currentPath}${path.delimiter}${extraPath}`,
-      // 鈿狅笍 鍏抽敭锛歁AKO_SERVER_MODE=1 鍛婅瘔瀛愯繘绋嬪彧杩愯 server.js锛屼笉鍒涘缓绐楀彛
-      // 杩欐槸闃叉 fork bomb 鐨勬満鍒?
+      // ⚠️ 关键：MAKO_SERVER_MODE=1 告诉子进程只运行 server.js，不创建窗口
+      // 这是防止 fork bomb 的机制
       MAKO_SERVER_MODE: '1',
       ANTHROPIC_BASE_URL: envSettings.ANTHROPIC_BASE_URL || 'https://api.deepseek.com/anthropic',
       ANTHROPIC_AUTH_TOKEN: envSettings.ANTHROPIC_AUTH_TOKEN || '',
       ANTHROPIC_API_KEY: envSettings.ANTHROPIC_AUTH_TOKEN || '',
       ANTHROPIC_MODEL: envSettings.ANTHROPIC_MODEL || 'deepseek-v4-flash',
-      ANTHROPIC_DEFAULT_OPUS_MODEL: envSettings.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-flash',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: envSettings.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro',
       ANTHROPIC_DEFAULT_SONNET_MODEL: envSettings.ANTHROPIC_DEFAULT_SONNET_MODEL || 'deepseek-v4-flash',
       ANTHROPIC_DEFAULT_HAIKU_MODEL: envSettings.ANTHROPIC_DEFAULT_HAIKU_MODEL || 'deepseek-v4-flash',
       CLAUDE_CODE_SUBAGENT_MODEL: envSettings.CLAUDE_CODE_SUBAGENT_MODEL || 'deepseek-v4-flash',
@@ -138,8 +138,8 @@ function startServer() {
       NODE_NO_WARNINGS: '1',
     };
 
-    // 浣跨敤 process.execPath锛圗lectron 鍐呯疆杩愯鏃讹級+ MAKO_SERVER_MODE=1
-    // 瀛愯繘绋嬫娴嬪埌 MAKO_SERVER_MODE=1 鍚庡彧杩愯 server.js锛屼笉鍒涘缓绐楀彛
+    // 使用 process.execPath（Electron 内置运行时）+ MAKO_SERVER_MODE=1
+    // 子进程检测到 MAKO_SERVER_MODE=1 后只运行 server.js，不创建窗口
     serverProc = spawn(process.execPath, [serverPath, String(SERVER_PORT)], {
       cwd: APP_DIR,
       env,
@@ -169,7 +169,7 @@ function startServer() {
   });
 }
 
-// 鈹€鈹€鈹€ 绛夊緟鏈嶅姟灏辩华 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 等待服务就绪 ────────────────────────────────────
 function waitForServer(retries = 30) {
   return new Promise((resolve) => {
     let attempts = 0;
@@ -203,7 +203,7 @@ function waitForServer(retries = 30) {
   });
 }
 
-// 鈹€鈹€鈹€ 妫€鏌ラ娆¤繍琛?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 检查首次运行 ────────────────────────────────────
 function isFirstRun() {
   const settingsPath = path.join(APP_DIR, 'mako-settings.json');
   try {
@@ -219,7 +219,7 @@ function isFirstRun() {
   }
 }
 
-// 鈹€鈹€鈹€ 鍒涘缓绐楀彛 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 创建窗口 ────────────────────────────────────────
 function createWindow(firstRun = false) {
   const preloadPath = path.join(__dirname, 'preload.js');
 
@@ -228,7 +228,7 @@ function createWindow(firstRun = false) {
     height: WINDOW_DEFAULTS.height,
     minWidth: WINDOW_DEFAULTS.minWidth,
     minHeight: WINDOW_DEFAULTS.minHeight,
-    title: 'MakoCode - 甯搁檰鑼夊瓙',
+    title: 'MakoCode - 常陆茉子',
     icon: path.join(APP_DIR, 'icon.ico'),
     webPreferences: {
       preload: preloadPath,
@@ -254,7 +254,7 @@ function createWindow(firstRun = false) {
   });
 }
 
-// 鈹€鈹€鈹€ 棣栨杩愯寮曞 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 首次运行引导 ────────────────────────────────────
 async function showFirstRunSetup() {
   if (mainWindow && mainWindow.webContents) {
     try {
@@ -273,11 +273,11 @@ async function showFirstRunSetup() {
   }
 }
 
-// 鈹€鈹€鈹€ 鍚庡鏂规锛氫粠鏈湴鏂囦欢鍔犺浇鍚戝 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 后备方案：从本地文件加载向导 ────────────────────
 function createFallbackWizard() {
   const wizardPath = path.join(APP_DIR, 'wizard.html');
   if (!fs.existsSync(wizardPath)) {
-    dialog.showErrorBox('鍚姩澶辫触', '鎵句笉鍒板悜瀵奸〉闈㈡枃浠讹紝璇烽噸鏂板畨瑁?MakoCode銆?);
+    dialog.showErrorBox('启动失败', '找不到向导页面文件，请重新安装 MakoCode。');
     app.quit();
     return;
   }
@@ -288,7 +288,7 @@ function createFallbackWizard() {
     height: WINDOW_DEFAULTS.height,
     minWidth: WINDOW_DEFAULTS.minWidth,
     minHeight: WINDOW_DEFAULTS.minHeight,
-    title: 'MakoCode - 甯搁檰鑼夊瓙 路 鍒濇瑙侀潰',
+    title: 'MakoCode - 常陆茉子 · 初次见面',
     icon: path.join(APP_DIR, 'icon.ico'),
     webPreferences: {
       preload: preloadPath,
@@ -303,13 +303,13 @@ function createFallbackWizard() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// 鈹€鈹€鈹€ IPC: 鍚庡彴瀹夎宸ュ叿锛坒ile:// 鍚庡妯″紡锛?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── IPC: 后台安装工具（file:// 后备模式） ──────────
 
 ipcMain.handle('install-tools', async (event, tools) => {
   const BUNDLED_DIR = path.join(APP_DIR, 'bundled-tools');
   const results = [];
 
-  // 鈿狅笍 纭繚 node 鍦?claude 涔嬪墠
+  // ⚠️ 确保 node 在 claude 之前
   const sortedTools = [...tools].sort((a, b) => {
     if (a === 'node' && b === 'claude') return -1;
     if (a === 'claude' && b === 'node') return 1;
@@ -317,17 +317,17 @@ ipcMain.handle('install-tools', async (event, tools) => {
   });
 
   for (const tool of sortedTools) {
-    // 棰勬锛氬凡瀹夎鍒欒烦杩?
+    // 预检：已安装则跳过
     try {
       const check = spawnSync('cmd.exe', ['/d', '/c', 'where', tool === 'claude' ? 'claude' : tool, '2>nul']);
       if (check.status === 0) {
-        results.push({ tool, status: 'done', message: `${tool} 宸插畨瑁咃紝璺宠繃` });
+        results.push({ tool, status: 'done', message: `${tool} 已安装，跳过` });
         continue;
       }
     } catch {}
 
     if (tool === 'claude') {
-      // npm install -g锛堥渶瑕?Node.js 瀹夎鍚庣殑 PATH锛?
+      // npm install -g（需要 Node.js 安装后的 PATH）
       log(`IPC install: claude via npm`);
       try {
         const nodejsDir = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs');
@@ -343,7 +343,7 @@ ipcMain.handle('install-tools', async (event, tools) => {
         results.push({
           tool: 'claude',
           status: (exitCode === 0) ? 'done' : 'error',
-          message: (exitCode === 0) ? 'Claude Code 瀹夎瀹屾垚' : `Claude Code 瀹夎澶辫触 (exit ${exitCode})`,
+          message: (exitCode === 0) ? 'Claude Code 安装完成' : `Claude Code 安装失败 (exit ${exitCode})`,
         });
       } catch (e) {
         results.push({ tool: 'claude', status: 'error', message: e.message });
@@ -351,7 +351,7 @@ ipcMain.handle('install-tools', async (event, tools) => {
       continue;
     }
 
-    // Node.js / Git锛氱敤 PowerShell Start-Process -Verb RunAs 鎻愭潈瀹夎
+    // Node.js / Git：用 PowerShell Start-Process -Verb RunAs 提权安装
     let installerPath = null;
     if (tool === 'node') {
       try {
@@ -368,7 +368,7 @@ ipcMain.handle('install-tools', async (event, tools) => {
     }
 
     if (!installerPath || !fs.existsSync(installerPath)) {
-      results.push({ tool, status: 'skip', message: '瀹夎鍖呮湭鎵惧埌' });
+      results.push({ tool, status: 'skip', message: '安装包未找到' });
       continue;
     }
 
@@ -389,7 +389,7 @@ ipcMain.handle('install-tools', async (event, tools) => {
       results.push({
         tool,
         status: (exitCode === 0 || exitCode === 3010) ? 'done' : 'error',
-        message: (exitCode === 0 || exitCode === 3010) ? `${tool} 瀹夎瀹屾垚` : `${tool} 瀹夎澶辫触 (exit ${exitCode})`,
+        message: (exitCode === 0 || exitCode === 3010) ? `${tool} 安装完成` : `${tool} 安装失败 (exit ${exitCode})`,
       });
     } catch (e) {
       results.push({ tool, status: 'error', message: e.message });
@@ -417,7 +417,7 @@ ipcMain.handle('cleanup-bundled-tools', async () => {
   return { ok: true };
 });
 
-// 鈹€鈹€鈹€ 鎵撳紑鏂囦欢澶?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 打开文件夹 ──────────────────────────────────────
 
 ipcMain.handle('open-skills-folder', async () => {
   const skillsDir = path.join(os.homedir(), '.claude', 'skills');
@@ -455,7 +455,7 @@ ipcMain.handle('open-plugins-folder', async () => {
   }
 });
 
-// 鈹€鈹€鈹€ 鑼夊瓙浜鸿鏂囦欢璇诲啓 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 茉子人设文件读写 ─────────────────────────────────
 
 ipcMain.handle('read-persona', async () => {
   const personaFile = path.join(APP_DIR, 'CLAUDE.md');
@@ -479,7 +479,7 @@ ipcMain.handle('write-persona', async (_event, { persona, lore }) => {
   const skillFile = path.join(APP_DIR, '.claude', 'skills', 'mako-lore', 'SKILL.md');
   try {
     if (persona !== undefined && persona !== null) {
-      // 纭繚鐩綍瀛樺湪
+      // 确保目录存在
       const personaDir = path.dirname(personaFile);
       if (!fs.existsSync(personaDir)) fs.mkdirSync(personaDir, { recursive: true });
       fs.writeFileSync(personaFile, persona, 'utf8');
@@ -497,7 +497,7 @@ ipcMain.handle('write-persona', async (_event, { persona, lore }) => {
   }
 });
 
-// 鈹€鈹€鈹€ 鑷姩鏇存柊 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 自动更新 ────────────────────────────────────────
 
 let updateStatus = {
   state: 'idle',        // idle | checking | available | downloading | downloaded | error
@@ -510,7 +510,7 @@ function sendUpdateStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('update-status', updateStatus);
   }
-  // 鍚屾椂鍐欏叆鏂囦欢锛屼緵 server.js 鐨?/api/update/status 璇诲彇
+  // 同时写入文件，供 server.js 的 /api/update/status 读取
   try {
     const statusFile = path.join(APP_DIR, '.update-status.json');
     fs.writeFileSync(statusFile, JSON.stringify(updateStatus), 'utf8');
@@ -518,7 +518,7 @@ function sendUpdateStatus() {
 }
 
 function setupAutoUpdater() {
-  // 鎯版€у姞杞?electron-updater锛堜粎姝ｅ父 Electron 妯″紡闇€瑕侊級
+  // 惰性加载 electron-updater（仅正常 Electron 模式需要）
   if (!autoUpdater) {
     try {
       autoUpdater = require('electron-updater').autoUpdater;
@@ -528,14 +528,19 @@ function setupAutoUpdater() {
     }
   }
 
-  // 閰嶇疆鏇存柊鏈嶅姟鍣?URL锛堝彲閫氳繃鐜鍙橀噺 MAKO_UPDATE_URL 瑕嗙洊锛?
-  if (process.env.MAKO_UPDATE_URL) {
-    autoUpdater.setFeedURL(process.env.MAKO_UPDATE_URL);
-  }
-  // 未设置时，electron-updater 自动从 package.json 的 publish 读取
+  // 配置更新服务器 URL（可通过环境变量 MAKO_UPDATE_URL 覆盖）
+  // 默认从 package.json build.publish.url 读取，保证与 electron-builder 配置一致
+  const updateUrl = process.env.MAKO_UPDATE_URL || (() => {
+    try {
+      const pkgPath = path.join(__dirname, 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      return pkg.build?.publish?.url || 'https://github.com/liebaojun/MakoCode/releases/download';
+    } catch { return 'https://github.com/liebaojun/MakoCode/releases/download'; }
+  })();
+  autoUpdater.setFeedURL(updateUrl);
 
-  autoUpdater.autoDownload = true;   // 鍚庡彴鑷姩涓嬭浇
-  autoUpdater.autoInstallOnAppQuit = false; // 璁╃敤鎴锋墜鍔ㄧ偣瀹夎
+  autoUpdater.autoDownload = true;   // 后台自动下载
+  autoUpdater.autoInstallOnAppQuit = false; // 让用户手动点安装
 
   autoUpdater.on('checking-for-update', () => {
     log('Auto-update: checking...');
@@ -544,20 +549,23 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-available', (info) => {
+    if (!autoUpdater) return;
     log(`Auto-update: available v${info.version}`);
     updateStatus = { state: 'downloading', version: info.version, progress: 0, error: null };
     sendUpdateStatus();
   });
 
   autoUpdater.on('update-not-available', () => {
+    if (!autoUpdater) return;
     log('Auto-update: already latest');
     updateStatus = { state: 'idle', version: null, progress: 0, error: null };
     sendUpdateStatus();
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
+    if (!autoUpdater) return;
     const pct = Math.floor(progressObj.percent);
-    // 姣?10% 鎵撲竴娆℃棩蹇楋紝鍑忓皯鍣０
+    // 每 10% 打一次日志，减少噪声
     if (pct % 10 === 0 || pct >= 100) {
       log(`Auto-update: download ${pct}% (${progressObj.transferred}/${progressObj.total})`);
     }
@@ -571,21 +579,28 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    if (!autoUpdater) return;
     log(`Auto-update: v${info.version} downloaded, ready to install`);
     updateStatus = { state: 'downloaded', version: info.version, progress: 100, error: null };
     sendUpdateStatus();
   });
 
   autoUpdater.on('error', (err) => {
+    if (!autoUpdater) return;
     log(`Auto-update error: ${err.message}`);
     updateStatus = { state: 'error', version: null, progress: 0, error: err.message };
     sendUpdateStatus();
   });
 }
 
-// IPC: 鎵嬪姩妫€鏌ユ洿鏂?
+// IPC: 手动检查更新
 ipcMain.handle('check-for-update', async () => {
   log('Auto-update: manual check triggered by user');
+  if (!autoUpdater) {
+    updateStatus = { state: 'error', version: null, progress: 0, error: 'Auto-updater not initialized' };
+    sendUpdateStatus();
+    return { ok: false, error: 'Auto-updater not initialized' };
+  }
   try {
     await autoUpdater.checkForUpdates();
     return { ok: true };
@@ -597,11 +612,15 @@ ipcMain.handle('check-for-update', async () => {
   }
 });
 
-// IPC: 瀹夎宸蹭笅杞界殑鏇存柊
+// IPC: 安装已下载的更新
 ipcMain.handle('install-update', async () => {
   log('Auto-update: user requested install');
+  if (!autoUpdater) {
+    log('Auto-update: autoUpdater not available, cannot install');
+    return { ok: false, error: 'autoUpdater not available' };
+  }
   try {
-    // quitAndInstall 浼氶€€鍑哄簲鐢ㄣ€佽繍琛?NSIS 闈欓粯瀹夎銆佸啀閲嶅惎
+    // quitAndInstall 会退出应用、运行 NSIS 静默安装、再重启
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
   } catch (err) {
@@ -610,7 +629,7 @@ ipcMain.handle('install-update', async () => {
   }
 });
 
-// 鈹€鈹€鈹€ 搴旂敤鐢熷懡鍛ㄦ湡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── 应用生命周期 ────────────────────────────────────
 app.whenReady().then(async () => {
   log('MakoCode starting...');
 
@@ -632,18 +651,20 @@ app.whenReady().then(async () => {
   const firstRun = isFirstRun();
   createWindow(firstRun);
 
-  // 鍒濆鍖栬嚜鍔ㄦ洿鏂帮紙闈為娆¤繍琛屾椂锛?
+  // 初始化自动更新（非首次运行时）
   if (!firstRun) {
     setupAutoUpdater();
-    // 鍚姩鍚庡欢杩?3 绉掓鏌ユ洿鏂帮紝浼樺厛璁╀富鐣岄潰鍔犺浇
+    // 启动后延迟 3 秒检查更新，优先让主界面加载
     setTimeout(() => {
+      if (!autoUpdater) return;
       autoUpdater.checkForUpdates().catch((err) => {
         log(`Auto-update: initial check failed: ${err.message}`);
       });
     }, 3000);
 
-    // 姣?4 灏忔椂鑷姩妫€鏌ヤ竴娆?
+    // 每 4 小时自动检查一次
     setInterval(() => {
+      if (!autoUpdater) return;
       autoUpdater.checkForUpdates().catch((err) => {
         log(`Auto-update: periodic check failed: ${err.message}`);
       });
@@ -669,4 +690,4 @@ app.on('activate', () => {
   if (mainWindow === null) createWindow();
 });
 
-} // end of else block 鈥?normal Electron mode
+} // end of else block — normal Electron mode

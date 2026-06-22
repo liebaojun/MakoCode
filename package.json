@@ -1,6 +1,6 @@
 {
   "name": "makocode",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "MakoCode - Hitachi Mako Galgame AI Companion",
   "author": "liebaojun",
   "main": "electron-main.js",
@@ -32,7 +32,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://mako-update.example.com/updates",
+      "url": "https://github.com/liebaojun/MakoCode/releases/download",
       "useMultipleRangeRequest": false
     },
     "asar": false,
@@ -54,6 +54,9 @@
       "!*.bat",
       "!*.ps1",
       "!mako-settings.json",
+      "!saves/**",
+      "!uploads/**",
+      "!.claude/**",
       "!installer.nsh",
       "!package-lock.json",
       "!start-tts.*",
@@ -68,6 +71,7 @@
   "devDependencies": {
     "electron": "^42.4.0",
     "electron-builder": "^26.15.2",
+    "playwright": "^1.61.0",
     "sharp": "^0.35.1"
   },
   "dependencies": {
