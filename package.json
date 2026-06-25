@@ -31,9 +31,9 @@
       "include": "installer.nsh"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://github.com/liebaojun/MakoCode/releases/download",
-      "useMultipleRangeRequest": false
+      "provider": "github",
+      "owner": "liebaojun",
+      "repo": "MakoCode"
     },
     "asar": false,
     "files": [

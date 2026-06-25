@@ -528,16 +528,26 @@ function setupAutoUpdater() {
     }
   }
 
-  // 配置更新服务器 URL（可通过环境变量 MAKO_UPDATE_URL 覆盖）
-  // 默认从 package.json build.publish.url 读取，保证与 electron-builder 配置一致
-  const updateUrl = process.env.MAKO_UPDATE_URL || (() => {
+  // 配置更新服务器（可通过环境变量 MAKO_UPDATE_URL 覆盖）
+  // 优先使用 package.json build.publish，其次依赖 electron-builder 生成的 app-update.yml
+  const feedConfig = process.env.MAKO_UPDATE_URL || (() => {
     try {
       const pkgPath = path.join(__dirname, 'package.json');
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      return pkg.build?.publish?.url || 'https://github.com/liebaojun/MakoCode/releases/download';
-    } catch { return 'https://github.com/liebaojun/MakoCode/releases/download'; }
+      const publish = pkg.build?.publish;
+      if (publish && publish.provider === 'github') {
+        return { provider: 'github', owner: publish.owner, repo: publish.repo };
+      }
+      if (publish && publish.provider === 'generic' && publish.url) {
+        return publish.url;
+      }
+      // build.publish 缺失（打包后被剥离）→ 不覆盖，让 electron-updater 读取 app-update.yml
+      return undefined;
+    } catch { return undefined; }
   })();
-  autoUpdater.setFeedURL(updateUrl);
+  if (feedConfig) {
+    autoUpdater.setFeedURL(feedConfig);
+  }
 
   autoUpdater.autoDownload = true;   // 后台自动下载
   autoUpdater.autoInstallOnAppQuit = false; // 让用户手动点安装
