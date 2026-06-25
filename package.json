@@ -54,8 +54,6 @@
       "!*.bat",
       "!*.ps1",
       "!mako-settings.json",
-      "!saves/**",
-      "!uploads/**",
       "!.claude/**",
       "!installer.nsh",
       "!package-lock.json",
