@@ -72,7 +72,45 @@
     Goto done
 
   keepData:
-    ; 不删除用户数据
+    ; 不删除用户数据，由 customRemoveFiles 保证不被后续默认流程误删
 
   done:
+!macroend
+
+; --- 自定义文件删除：替代 electron-builder 默认的全目录清理 ---
+; 默认卸载会 RMDir /r $INSTDIR 把整个安装目录删掉，
+; 即使用户在 customUnInstall 里选了保留也会被打掉。
+; 定义此宏后，默认文件删除被跳过，由我们精确控制删什么。
+; 快捷方式和注册表清理由 electron-builder 的单独 Section 处理，不受影响。
+
+!macro customRemoveFiles
+  ; 删除已知应用目录（不含用户数据）
+  RMDir /r "$INSTDIR\resources"
+  RMDir /r "$INSTDIR\locales"
+  RMDir /r "$INSTDIR\bundled-tools"
+
+  ; 如果用户选择了全部删除，saves/uploads/voice-data 已被 customUnInstall 清理
+  ; 如果选择了保留，这些目录仍然存在，下面的循环会跳过它们
+  FindFirst $0 $1 "$INSTDIR\*.*"
+  loop:
+    StrCmp $1 "" done
+    StrCmp $1 "." next
+    StrCmp $1 ".." next
+    StrCmp $1 "saves" next
+    StrCmp $1 "uploads" next
+    StrCmp $1 "voice-data" next
+    StrCmp $1 "uninstall.exe" next
+    IfFileExists "$INSTDIR\$1\*" 0 removeFile
+      RMDir /r "$INSTDIR\$1"
+      Goto next
+    removeFile:
+      Delete "$INSTDIR\$1"
+    next:
+    FindNext $0 $1
+    Goto loop
+  done:
+  FindClose $0
+
+  ; 尝试删除安装目录（仅在为空时成功）
+  RMDir "$INSTDIR"
 !macroend
