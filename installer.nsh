@@ -67,6 +67,7 @@
 
   deleteAll:
     ; 真实数据在 resources\app\ 下（server.js 用 __dirname 定位）
+    ; ⚠️ 新增用户数据目录时，此处和 customRemoveFiles 的跳过列表都需同步更新
     RMDir /r "$INSTDIR\resources\app\saves"
     RMDir /r "$INSTDIR\resources\app\uploads"
     RMDir /r "$INSTDIR\resources\app\voice-data"
@@ -95,6 +96,9 @@
 
 !macro customRemoveFiles
   ; Step 1: 选择性清理 resources/app/ —— 保留用户数据
+  ; ⚠️ 维护提醒：如果 server.js 新增了用户数据目录或文件（类似 saves/、CLAUDE.md），
+  ;   必须在下方跳过列表中添加对应条目，否则卸载时会被静默删除。
+  ;   同步更新 customUnInstall 的 deleteAll 分支。
   FindFirst $0 $1 "$INSTDIR\resources\app\*.*"
   rmf_loop:
     StrCmp $1 "" rmf_done
