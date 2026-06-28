@@ -3785,7 +3785,9 @@ async function loadGame(saveId) {
 
 // ===== 自动存档 =====
 async function autoSave() {
-  if (!currentSaveId || history.length === 0) return;
+  if (history.length === 0) return;
+  // 首次对话自动生成存档 ID，无需用户手动新建
+  if (!currentSaveId) currentSaveId = crypto.randomUUID();
   const title = history.find(h => h.speaker === '主人')?.text?.slice(0, 30)
     || history[0]?.text?.slice(0, 30)
     || '无标题';

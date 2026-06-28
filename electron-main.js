@@ -780,9 +780,11 @@ app.whenReady().then(async () => {
   const firstRun = isFirstRun();
   createWindow(firstRun);
 
-  // 初始化自动更新（非首次运行时）
+  // 始终初始化自动更新（包括首次运行），确保用户可随时手动检查更新
+  setupAutoUpdater();
+
+  // 非首次运行时自动检查更新（首次运行让用户先完成设置向导）
   if (!firstRun) {
-    setupAutoUpdater();
     // 启动后延迟检查更新，优先让主界面加载
     updateTimer = setTimeout(() => {
       if (!autoUpdater) return;
