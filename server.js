@@ -933,6 +933,7 @@ const server = http.createServer((req, res) => {
 
 // ─── 单次对话（--print 模式）─────────────────────────
 function streamChat(res, prompt, sessionId, allowedTools, permissionMode) {
+  const env = buildEnv();
   const args = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json"];
 
   if (sessionId) {
@@ -954,6 +955,17 @@ function streamChat(res, prompt, sessionId, allowedTools, permissionMode) {
   args.push("--model", currentModel);
   args.push("--print");
 
+  // --settings 覆盖 ~/.claude/settings.json 中的 env，防止全局配置覆盖 MakoCode 的自定义模型设置
+  const envOverrides = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value != null && (key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_CODE_'))) {
+      envOverrides[key] = value;
+    }
+  }
+  const overrideSettings = { env: envOverrides };
+  args.push("--settings", JSON.stringify(overrideSettings));
+  log(`[settings-override] ${JSON.stringify(overrideSettings)}`);
+
   // Windows: spawn 无法直接运行 .cmd，需通过 cmd.exe /d /c 启动
   // 先尝试定位 claude.exe 真实路径，找不到则通过 cmd 兜底
   const npmDir = path.join(process.env.APPDATA || '', 'npm');
@@ -970,8 +982,6 @@ function streamChat(res, prompt, sessionId, allowedTools, permissionMode) {
   }
 
   log(`Spawning: ${claudeCmd} ${claudeArgs.join(" ")} (prompt via stdin, ${prompt.length} chars)`);
-
-  const env = buildEnv();
 
   const proc = spawn(claudeCmd, claudeArgs, {
     env,
